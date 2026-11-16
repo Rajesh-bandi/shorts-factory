@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shorts Factory — long → vertical</title>
+<meta name="theme-color" content="#1b1b1b">
+<meta name="color-scheme" content="dark light">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<script src="theme.js?v=20261115-13"></script>
+    <link rel="stylesheet" href="style.css?v=20261116-1">
+    <link rel="stylesheet" href="aesthetic.css?v=20261115-3">
+    <link rel="stylesheet" href="vice.css?v=20261115-19">
+</head>
+<body class="auth-locked">
+<div class="boot-splash" id="bootSplash" role="status" aria-label="Starting Shorts Factory">
+  <div class="boot-mark"><span>▶</span></div>
+  <div class="boot-word">shorts <em>factory</em></div>
+  <div class="boot-bar"><span></span></div>
+  <small>warming the neon</small>
+</div>
+<div class="auth-gate" id="authGate">
+  <div class="vice-scene auth-scene" aria-hidden="true">
+    <span class="vice-clouds"></span>
+    <span class="vice-haze"></span>
+    <span class="vice-sun"></span>
+    <span class="vice-city"></span>
+    <span class="vice-water"></span>
+    <span class="vice-shore"></span>
+    <span class="vice-palm p-left"></span>
+    <span class="vice-palm p-right"></span>
+    <span class="vice-wordmark"><b>VICE</b><i>6</i></span>
+    <span class="vice-scanlines"></span>
+  </div>
+  <div class="vice-radio" aria-hidden="true">
+    <span class="vice-eq"><i></i><i></i><i></i><i></i><i></i></span>
+    <span><strong>VICE FM</strong><small>98.6 · NIGHT DRIVE</small></span>
+  </div>
+  <div class="auth-card">
+    <div class="auth-mark"><span>▶</span></div>
+    <div class="eyebrow">private workspace</div>
+    <h1>Shorts <span class="grad-text">Factory</span></h1>
+    <p class="auth-sub">Sign in to your own channels, keys and clip library.</p>
+    <div class="auth-tabs" id="authTabs">
+      <button class="tab active" data-auth-tab="login">Sign in</button>
+      <button class="tab" data-auth-tab="register">Create account</button>
+    </div>
+    <form class="auth-form" id="authForm" autocomplete="on">
+      <div class="field" id="authNameField" hidden><label for="authName">Name</label><input id="authName" type="text" autocomplete="name" placeholder="Your name"></div>
+      <div class="field"><label for="authEmail">Email</label><input id="authEmail" type="email" autocomplete="email" placeholder="you@example.com" required></div>
+      <div class="field"><label for="authPassword">Password</label><input id="authPassword" type="password" autocomplete="current-password" placeholder="At least 10 characters" minlength="10" required></div>
+      <div class="field" id="authInviteField" hidden><label for="authInvite">Invite code</label><input id="authInvite" type="text" autocomplete="off" placeholder="Required after the first account"><p class="hint">The owner has the invite code. Ask them for it.</p></div>
+      <div class="auth-error" id="authError" hidden></div>
+      <button class="btn primary full-width" id="authSubmit" type="submit"><span id="authSubmitLabel">Sign in</span><span data-icon="arrow-right"></span></button>
+    </form>
+    <p class="auth-foot">Desktop installs open straight into one local workspace. Media and keys stay on this computer.</p>
+  </div>
+</div>
+<div class="fx" aria-hidden="true">
+  <div class="vice-scene" aria-hidden="true">
+    <span class="vice-clouds"></span>
+    <span class="vice-haze"></span>
+    <span class="vice-sun"></span>
+    <span class="vice-city"></span>
+    <span class="vice-water"></span>
+    <span class="vice-shore"></span>
+    <span class="vice-palm p-left"></span>
+    <span class="vice-palm p-right"></span>
+    <span class="vice-wordmark"><b>VICE</b><i>6</i></span>
+    <span class="vice-scanlines"></span>
+  </div>
+  <span class="fx-blob b1"></span><span class="fx-blob b2"></span><span class="fx-blob b3"></span>
+  <span class="fx-grid"></span><span class="fx-grain"></span><span class="fx-scan"></span>
+</div>
+
+<div class="app">
+  <aside class="rail" id="rail">
+    <div class="rail-head">
+      <button class="brand" data-go="dashboard" aria-label="Go to dashboard">
+        <span class="brand-mark"><span>▶</span></span>
+        <span class="brand-text"><strong>shorts <em>factory</em></strong><small>long → vertical</small></span>
+      </button>
+      <button class="icon-btn rail-collapse" id="railCollapse" aria-label="Collapse sidebar"><span data-icon="panel"></span></button>
+    </div>
+
+    <nav class="nav" id="nav" aria-label="Main">
+      <button class="nav-item" data-view="dashboard"><span class="nav-ico" data-icon="dashboard"></span><span class="nav-label">Dashboard</span><span class="nav-key">1</span></button>
+      <button class="nav-item" data-view="create"><span class="nav-ico" data-icon="create"></span><span class="nav-label">Create</span><span class="nav-key">2</span></button>
+      <button class="nav-item" data-view="jobs"><span class="nav-ico" data-icon="layers"></span><span class="nav-label">Jobs</span><em class="badge" id="navBadge"></em><span class="nav-key">3</span></button>
+      <button class="nav-item" data-view="history"><span class="nav-ico" data-icon="film"></span><span class="nav-label">History</span><span class="nav-key">4</span></button>
+      <button class="nav-item" data-view="analytics"><span class="nav-ico" data-icon="chart"></span><span class="nav-label">Analytics</span><span class="nav-key">5</span></button>
+      <button class="nav-item" data-view="settings"><span class="nav-ico" data-icon="sliders"></span><span class="nav-label">Settings</span><span class="nav-key">6</span></button>
+    </nav>
+
+    <div class="rail-grow"></div>
+
+    <div class="rail-card">
+      <div class="rail-card-eyebrow"><span data-icon="bolt"></span> pipeline</div>
+      <div class="rail-card-row"><span id="railActive">0 active</span><span class="dot-sep"></span><span id="railReview">0 review</span></div>
+      <button class="rail-card-btn" data-go="create">New short <span data-icon="arrow-right"></span></button>
+    </div>
+
+    <button class="conn-card" id="connCard" title="Channel connection">
+      <span class="dot" id="connDot"></span>
+      <span class="conn-copy"><strong id="connLabel">Not connected</strong><small id="connSub">local mode</small></span>
+      <span class="conn-chev" data-icon="chevron-right"></span>
+    </button>
+    <div class="rail-foot"><span id="appVersion">v1.0.0</span><span class="kbd">⌘K</span></div>
+  </aside>
+  <div class="rail-scrim" id="railScrim"></div>
+
+  <main class="main">
+    <header class="topbar">
+      <button class="icon-btn only-mobile" id="railOpen" aria-label="Open menu"><span data-icon="menu"></span></button>
+      <div class="crumbs"><span class="crumb-muted">ytm</span><span class="crumb-sep">/</span><span id="crumbView">dashboard</span></div>
+      <div class="top-actions">
+        <button class="cmd-trigger" id="cmdTrigger" aria-label="Open command palette">
+          <span data-icon="search"></span><span class="cmd-text">Search or jump…</span><kbd id="cmdKbd">⌘K</kbd>
+        </button>
+        <div class="account-chip" id="accountChip" title="Signed-in account">
+          <span class="account-avatar" id="accountAvatar">·</span>
+          <span class="account-copy"><strong id="accountName">Account</strong><small id="accountEmail"></small></span>
+          <button class="icon-btn" id="btnLogout" title="Sign out"><span data-icon="external"></span></button>
+        </div>
+        <button class="icon-btn" id="btnMode" title="Toggle light / dark"><span data-icon="sun"></span></button>
+        <button class="icon-btn" id="btnTweaks" title="Appearance"><span data-icon="palette"></span></button>
+        <button class="icon-btn" id="btnHelp" title="Keyboard shortcuts"><span data-icon="keyboard"></span></button>
+      </div>
+    </header>
+
+    <div class="viewport">
+
+      <!-- ============ DASHBOARD ============ -->
+      <section class="view" id="view-dashboard" data-title="Dashboard">
+        <div class="page-head">
+          <div>
+            <div class="eyebrow">overview</div>
+            <h1>Command center</h1>
+            <p class="sub">Channel, pipeline and the next move — all in one place.</p>
+          </div>
+          <div class="head-actions">
+            <button class="btn ghost" id="dashRefresh"><span data-icon="refresh"></span>Refresh</button>
+            <button class="btn primary" data-go="create"><span data-icon="create"></span>New short</button>
+          </div>
+        </div>
+
+        <div class="channel-strip" id="channelStrip">
+          <span class="skeleton sk-avatar"></span>
+          <div class="cs-main"><span class="skeleton sk-line w40"></span><span class="skeleton sk-line w70"></span></div>
+        </div>
+
+        <div class="stat-grid">
+          <div class="stat-card spot">
+            <div class="stat-top"><span class="stat-ico" data-icon="users"></span><span class="stat-label">subscribers</span></div>
+            <div class="stat-value" id="stSubs">—</div>
+            <div class="stat-foot" id="stSubsFoot">from YouTube</div>
+          </div>
+          <div class="stat-card spot">
+            <div class="stat-top"><span class="stat-ico" data-icon="eye"></span><span class="stat-label">total views</span></div>
+            <div class="stat-value" id="stViews">—</div>
+            <div class="stat-foot" id="stViewsFoot">channel lifetime</div>
+          </div>
+          <div class="stat-card spot">
+            <div class="stat-top"><span class="stat-ico" data-icon="film"></span><span class="stat-label">videos</span></div>
+            <div class="stat-value" id="stVideos">—</div>
+            <div class="stat-foot" id="stVideosFoot">published</div>
+          </div>
+          <div class="stat-card spot">
+            <div class="stat-top"><span class="stat-ico" data-icon="scissors"></span><span class="stat-label">shorts made</span></div>
+            <div class="stat-value" id="stUploads">—</div>
+            <div class="stat-foot" id="stUploadsFoot">by this app</div>
+          </div>
+        </div>
+
+        <div class="card chart-card spot dashboard-chart">
+          <div class="card-head">
+            <div><div class="eyebrow">audience</div><h3>Subscriber growth</h3></div>
+            <div class="legend"><span class="legend-dot"></span>subs</div>
+          </div>
+          <div class="chart-wrap" id="dashChartWrap">
+            <svg id="dashChart" viewBox="0 0 820 260" preserveAspectRatio="none" role="img" aria-label="Subscriber growth chart"></svg>
+            <div class="chart-tip" id="dashTip" hidden></div>
+          </div>
+          <div class="chart-foot"><span id="sparkNote">No snapshots yet — refresh analytics to start tracking.</span><button class="link-btn" data-go="analytics">Open analytics →</button></div>
+        </div>
+
+        <div class="dash-lower">
+          <div class="card">
+            <div class="card-head"><div><div class="eyebrow">pipeline</div><h3>Recent jobs</h3></div><button class="link-btn" data-go="jobs">All jobs →</button></div>
+            <div id="recentJobs" class="recent-list"><div class="skeleton sk-line"></div></div>
+          </div>
+          <div class="card quick-card">
+            <div class="card-head"><div><div class="eyebrow">shortcuts</div><h3>Quick actions</h3></div></div>
+            <div class="quick-grid">
+              <button class="quick-btn" data-go="create"><span class="q-ico" data-icon="create"></span><span><strong>New short</strong><small>paste a URL</small></span><kbd>N</kbd></button>
+              <button class="quick-btn" data-go="history"><span class="q-ico" data-icon="film"></span><span><strong>History</strong><small>play or clean up</small></span><kbd>4</kbd></button>
+              <button class="quick-btn" data-go="analytics"><span class="q-ico" data-icon="chart"></span><span><strong>Analytics</strong><small>read the data</small></span><kbd>5</kbd></button>
+              <button class="quick-btn" data-go="settings"><span class="q-ico" data-icon="sliders"></span><span><strong>Settings</strong><small>channel &amp; AI</small></span><kbd>6</kbd></button>
+            </div>
+            <div class="kbd-list">
+              <span><kbd>1</kbd>–<kbd>6</kbd> views</span><span><kbd>⌘K</kbd> jump</span><span><kbd>?</kbd> help</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ CREATE ============ -->
+      <section class="view" id="view-create" data-title="Create">
+        <div class="page-head">
+          <div>
+            <div class="eyebrow">studio</div>
+            <h1>Make something <span class="grad-text">loopable</span></h1>
+            <p class="sub">Paste a long video. We read its timed transcript first, let AI choose the moments, then download only those ranges — no full-video waiting.</p>
+          </div>
+        </div>
+
+        <div class="create-mode tabs" id="createModeTabs" role="tablist">
+          <button class="tab active" data-create-mode="auto">AI clips</button>
+          <button class="tab" data-create-mode="manual">Manual cut</button>
+          <button class="tab" data-create-mode="batch">Batch queue</button>
+        </div>
+
+        <div class="composer spot">
+          <div class="composer-top">
+            <div class="composer-label"><span data-icon="link"></span> source video</div>
+            <div class="composer-badges"><span class="pill muted">YouTube</span><span class="pill muted">transcript first</span><span class="pill muted">up to 1080p</span></div>
+          </div>
+          <div class="url-row">
+            <div class="url-input">
+              <span class="url-ico" data-icon="youtube"></span>
+              <input id="urlInput" type="url" placeholder="https://youtube.com/watch?v=…" spellcheck="false" autocomplete="off">
+              <button class="icon-btn paste-btn" id="btnPaste" title="Paste from clipboard"><span data-icon="clipboard"></span></button>
+            </div>
+            <button class="btn primary lg" id="btnAnalyze"><span id="btnAnalyzeLabel">Find moments</span><span data-icon="arrow-right"></span></button>
+          </div>
+          <p class="inline-error" id="urlHint" hidden></p>
+
+          <div class="composer-opts">
+            <div class="count-picker" id="countPicker">
+              <span class="opt-label">clips</span>
+              <button class="chip" data-count="1">1</button>
+              <button class="chip on" data-count="2">2</button>
+              <button class="chip" data-count="3">3</button>
+              <button class="chip" data-count="4">4</button>
+              <button class="chip" data-count="5">5</button>
+            </div>
+            <div class="manual-times" id="manualTimes" hidden>
+              <div class="time-input"><label for="manualStart">Start</label><input id="manualStart" type="text" inputmode="decimal" placeholder="0:00" autocomplete="off"></div>
+              <span class="time-dash">→</span>
+              <div class="time-input"><label for="manualEnd">End</label><input id="manualEnd" type="text" inputmode="decimal" placeholder="0:45" autocomplete="off"></div>
+              <span class="hint">mm:ss or seconds · max 3 min</span>
+            </div>
+            <details class="advanced" id="createAdvanced" open>
+              <summary><span data-icon="sliders"></span> Render options <span class="chev" data-icon="chevron-down"></span></summary>
+              <div class="adv-grid">
+                <div class="field"><label for="createPrivacy">Privacy</label><select id="createPrivacy"><option value="public">Public</option><option value="unlisted">Unlisted</option><option value="private">Private</option></select></div>
+                <div class="field" id="durationField"><label for="createDuration">Clip length</label><select id="createDuration"><option value="30">30 seconds</option><option value="45" selected>45 seconds</option><option value="60">60 seconds</option><option value="90">90 seconds</option></select></div>
+                <div class="field" id="layoutField"><label for="createMode">Short layout</label><select id="createMode"><option value="separate">Separate shorts</option><option value="multi_cut">One short · multiple cuts</option></select><p class="hint">Multi-cut asks the AI to turn several transcript moments into one story.</p></div>
+                <div class="field"><label for="createReframe">Reframe</label><select id="createReframe"><option value="crop">Center crop</option><option value="blur">Blurred backdrop</option></select></div>
+                <div class="publish-note"><span data-icon="info"></span><span>Renders stay local. Publish each Short from <strong>History</strong> with AI-written metadata.</span></div>
+              </div>
+
+              <div class="caption-studio">
+                <div class="caption-studio-head">
+                  <div><div class="eyebrow">burned in</div><h4>Caption studio</h4></div>
+                  <span class="pill muted">live · 9:16</span>
+                </div>
+                <div class="caption-layout">
+                  <div class="cap-stage" id="capStage" data-pos="bottom">
+                    <span class="cap-glow"></span>
+                    <div class="cap-line" id="capLine">THIS IS THE MOMENT</div>
+                  </div>
+                  <div class="caption-controls">
+                    <div class="field">
+                      <label>Preset</label>
+                      <div class="cap-presets" id="capPresets">
+                        <button class="cap-preset" data-preset="gruvbox">Gruvbox</button>
+                        <button class="cap-preset" data-preset="omarchy">Omarchy green</button>
+                        <button class="cap-preset" data-preset="classic">Classic</button>
+                        <button class="cap-preset" data-preset="boxed">Boxed</button>
+                        <button class="cap-preset" data-preset="clean">Clean</button>
+                        <button class="cap-preset" data-preset="neon">Neon</button>
+                        <button class="cap-preset" data-preset="outline">Outline</button>
+                        <button class="cap-preset" data-preset="impact">Impact</button>
+                        <button class="cap-preset" data-preset="shadow">Shadow</button>
+                        <button class="cap-preset" data-preset="karaoke">Karaoke</button>
+                        <button class="cap-preset" data-preset="minimal">Minimal</button>
+                        <button class="cap-preset" data-preset="terminal">Terminal</button>
+                      </div>
+                      <input type="hidden" id="caption_preset" value="gruvbox">
+                    </div>
+                    <div class="row">
+                      <div class="field"><label for="caption_size">Size <span class="range-out" id="capSizeOut">46px</span></label><input id="caption_size" type="range" min="22" max="70" step="1" value="46"></div>
+                      <div class="field"><label for="caption_animation">Animation</label><select id="caption_animation"><option value="static">Static lines</option><option value="word">Word highlight · full phrase</option><option value="pop">Pop-in</option></select></div>
+                    </div>
+                    <div class="row">
+                      <div class="field">
+                        <label>Position</label>
+                        <div class="seg" id="capPosition">
+                          <button data-pos="top">Top</button>
+                          <button data-pos="center">Center</button>
+                          <button data-pos="bottom" class="on">Bottom</button>
+                        </div>
+                        <input type="hidden" id="caption_position" value="bottom">
+                      </div>
+                      <div class="field"><label for="caption_highlight">Highlight colour</label><input type="color" id="caption_highlight" value="#fe8019"></div>
+                    </div>
+                    <div class="field">
+                      <label>Colour</label>
+                      <div class="swatches" id="capColors">
+                        <button class="swatch" data-color="#ffffff" style="--sw:#ffffff" title="White"></button>
+                        <button class="swatch" data-color="#fabd2f" style="--sw:#fabd2f" title="Gruvbox yellow"></button>
+                        <button class="swatch" data-color="#8ec07c" style="--sw:#8ec07c" title="Aqua"></button>
+                        <button class="swatch" data-color="#b8bb26" style="--sw:#b8bb26" title="Omarchy green"></button>
+                        <button class="swatch" data-color="#fbf1c7" style="--sw:#fbf1c7" title="Cream"></button>
+                        <button class="swatch" data-color="#fe8019" style="--sw:#fe8019" title="Orange"></button>
+                        <button class="swatch" data-color="#fb4934" style="--sw:#fb4934" title="Red"></button>
+                        <label class="swatch custom" title="Custom colour"><input type="color" id="caption_color" value="#fabd2f"></label>
+                      </div>
+                    </div>
+                    <div class="cap-toggles">
+                      <label class="switch"><input type="checkbox" id="caption_uppercase" checked><span class="sw"></span><span>Uppercase</span></label>
+                      <label class="switch"><input type="checkbox" id="caption_box"><span class="sw"></span><span>Solid box</span></label>
+                    </div>
+                    <div class="field"><label for="capSample">Preview text</label><input id="capSample" type="text" value="THIS IS THE MOMENT" maxlength="60"></div>
+                    <p class="caption-help" id="captionHelp">Full caption stays visible. The active word changes colour and grows to 112% over 100 ms.</p>
+                  </div>
+                </div>
+              </div>
+            </details>
+          </div>
+        </div>
+
+        <div class="manual-panel" id="manualPanel" hidden>
+          <div class="card spot">
+            <div class="card-head">
+              <div><div class="eyebrow">manual cut</div><h3 id="manualTitle">Download a specific moment</h3></div>
+              <span class="status muted" id="manualStatus"><i></i>Ready</span>
+            </div>
+            <div class="manual-body">
+              <div class="manual-video-wrap" id="manualVideoWrap" hidden>
+                <video id="manualVideo" controls playsinline preload="metadata"></video>
+                <span class="manual-raw">raw source preview · final render is cropped to 9:16</span>
+              </div>
+              <div class="manual-info">
+                <div class="pbar"><span id="manualProgress" style="width:0%"></span></div>
+                <div class="manual-meta" id="manualMeta">Enter start and end timestamps, then download only that range.</div>
+                <div class="manual-actions">
+                  <button class="btn ghost sm" id="manualOpenJob" hidden><span data-icon="layers"></span>Open job</button>
+                  <button class="btn primary sm" id="manualRender" hidden><span data-icon="scissors"></span>Render 9:16 short</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="flow" id="createFlow" aria-label="Pipeline">
+          <div class="flow-step"><span class="flow-num">01</span><div><strong>Read transcript</strong><small>YouTube captions first</small></div></div>
+          <div class="flow-step"><span class="flow-num">02</span><div><strong>AI picks hooks</strong><small>before any video download</small></div></div>
+          <div class="flow-step"><span class="flow-num">03</span><div><strong>You review</strong><small>trim &amp; pick</small></div></div>
+          <div class="flow-step"><span class="flow-num">04</span><div><strong>Fetch cuts</strong><small>only selected ranges</small></div></div>
+          <div class="flow-step"><span class="flow-num">05</span><div><strong>Render</strong><small>9:16 + captions</small></div></div>
+          <div class="flow-step"><span class="flow-num">06</span><div><strong>Review &amp; publish</strong><small>from History, with AI metadata</small></div></div>
+        </div>
+
+        <div class="manual-panel" id="batchPanel" hidden>
+          <div class="card spot">
+            <div class="card-head">
+              <div><div class="eyebrow">queue</div><h3>Batch / series</h3></div>
+              <span class="pill muted">up to 20 URLs</span>
+            </div>
+            <div class="field"><label for="batchName">Batch name</label><input id="batchName" type="text" placeholder="Week 46 — gaming series" maxlength="120"></div>
+            <div class="field"><label for="batchUrls">YouTube URLs <span class="hint">one per line</span></label><textarea id="batchUrls" rows="6" placeholder="https://youtube.com/watch?v=…&#10;https://youtube.com/watch?v=…"></textarea></div>
+            <div class="row">
+              <div class="field"><label for="batchKind">Queue type</label><select id="batchKind"><option value="batch">Batch</option><option value="series">Series</option></select></div>
+              <div class="field"><label for="batchCount">Clips per video</label><select id="batchCount"><option value="1">1</option><option value="2" selected>2</option><option value="3">3</option><option value="4">4</option></select></div>
+            </div>
+            <div class="review-actions"><button class="btn primary sm" id="btnBatch"><span data-icon="layers"></span>Queue batch</button><span class="hint">Renders and uploads are explicit. Nothing publishes automatically.</span></div>
+          </div>
+        </div>
+
+        <div id="createActive"></div>
+      </section>
+
+      <!-- ============ JOBS ============ -->
+      <section class="view" id="view-jobs" data-title="Jobs">
+        <div class="page-head">
+          <div>
+            <div class="eyebrow">pipeline</div>
+            <h1>Jobs</h1>
+            <p class="sub">Every run, every stage, every clip. Review candidates, trim them, then render.</p>
+          </div>
+          <div class="head-actions">
+            <button class="btn ghost" id="jobsRefresh"><span data-icon="refresh"></span>Refresh</button>
+            <button class="btn primary" data-go="create"><span data-icon="create"></span>New short</button>
+          </div>
+        </div>
+        <div class="toolbar">
+          <div class="search-box"><span data-icon="search"></span><input id="jobSearch" placeholder="Search jobs…" autocomplete="off"></div>
+          <div class="filters" id="jobFilters">
+            <button class="filter on" data-filter="all">All</button>
+            <button class="filter" data-filter="active">Active</button>
+            <button class="filter" data-filter="review">Review</button>
+            <button class="filter" data-filter="done">Done</button>
+            <button class="filter" data-filter="error">Failed</button>
+          </div>
+        </div>
+        <div id="jobList"></div>
+      </section>
+
+      <!-- ============ HISTORY ============ -->
+      <section class="view" id="view-history" data-title="History">
+        <div class="page-head">
+          <div>
+            <div class="eyebrow">library</div>
+            <h1>History</h1>
+            <p class="sub">Every Short this app has generated. Play it, open the source job, or clean up local files you no longer need.</p>
+          </div>
+          <div class="head-actions">
+            <button class="btn ghost" id="historyRefresh"><span data-icon="refresh"></span>Refresh</button>
+            <button class="btn ghost danger-text" id="historyDeleteSelected" disabled><span data-icon="trash"></span>Delete selected</button>
+            <button class="btn ghost danger-text" id="historyDeleteAll"><span data-icon="trash"></span>Delete all</button>
+          </div>
+        </div>
+        <div class="toolbar">
+          <div class="search-box"><span data-icon="search"></span><input id="historySearch" placeholder="Search generated clips…" autocomplete="off"></div>
+          <div class="history-tools">
+            <div class="filters" id="historyFilters">
+              <button class="filter on" data-history-filter="all">All</button>
+              <button class="filter" data-history-filter="local">Not uploaded</button>
+              <button class="filter" data-history-filter="uploaded">Uploaded</button>
+            </div>
+            <button class="btn ghost sm" id="historySelectAll"><span data-icon="check"></span>Select all</button>
+            <span class="pill muted" id="historyCount">0 clips</span>
+          </div>
+        </div>
+        <div id="historyGrid" class="history-grid"></div>
+      </section>
+
+      <!-- ============ ANALYTICS ============ -->
+      <section class="view" id="view-analytics" data-title="Analytics">
+        <div class="page-head">
+          <div>
+            <div class="eyebrow">signals</div>
+            <h1>Analytics</h1>
+            <p class="sub">What the channel is doing, which clips land, and where the next win is.</p>
+          </div>
+          <div class="head-actions">
+            <button class="btn ghost" id="btnExport"><span data-icon="download"></span>Export CSV</button>
+            <button class="btn primary" id="btnRefresh"><span data-icon="refresh"></span>Refresh from YouTube</button>
+          </div>
+        </div>
+
+        <div class="stat-grid five">
+          <div class="stat-card spot"><div class="stat-top"><span class="stat-ico" data-icon="users"></span><span class="stat-label">subscribers</span></div><div class="stat-value" id="anSubs">—</div><div class="stat-foot">channel</div></div>
+          <div class="stat-card spot"><div class="stat-top"><span class="stat-ico" data-icon="eye"></span><span class="stat-label">views</span></div><div class="stat-value" id="anViews">—</div><div class="stat-foot">lifetime</div></div>
+          <div class="stat-card spot"><div class="stat-top"><span class="stat-ico" data-icon="film"></span><span class="stat-label">videos</span></div><div class="stat-value" id="anVideos">—</div><div class="stat-foot">published</div></div>
+          <div class="stat-card spot"><div class="stat-top"><span class="stat-ico" data-icon="database"></span><span class="stat-label">tracked</span></div><div class="stat-value" id="anTracked">—</div><div class="stat-foot">videos in DB</div></div>
+          <div class="stat-card spot"><div class="stat-top"><span class="stat-ico" data-icon="scissors"></span><span class="stat-label">shorts made</span></div><div class="stat-value" id="anMade">—</div><div class="stat-foot">by this app</div></div>
+        </div>
+
+        <div class="card chart-card spot">
+          <div class="card-head"><div><div class="eyebrow">reach</div><h3>Total views over time</h3></div><div class="legend"><span class="legend-dot"></span>views</div></div>
+          <div class="chart-wrap tall" id="anChartWrap">
+            <svg id="anChart" viewBox="0 0 820 300" preserveAspectRatio="none" role="img" aria-label="Views chart"></svg>
+            <div class="chart-tip" id="anTip" hidden></div>
+          </div>
+          <div class="chart-foot"><span id="anNote">Refresh analytics to build history.</span></div>
+        </div>
+
+        <div class="dash-grid">
+          <div class="card">
+            <div class="card-head"><div><div class="eyebrow">winners</div><h3>Top videos</h3></div></div>
+            <div id="topVideos" class="top-list"></div>
+          </div>
+          <div class="card advisor-card">
+            <div class="card-head"><div><div class="eyebrow">coach</div><h3>What to do next</h3></div><span class="badge soft" id="anAdvSource">rules</span></div>
+            <div id="anAdvice" class="advice"></div>
+          </div>
+        </div>
+
+        <div class="card table-card">
+          <div class="card-head">
+            <div><div class="eyebrow">library</div><h3>Tracked videos</h3></div>
+            <div class="search-box compact"><span data-icon="search"></span><input id="vidSearch" placeholder="Filter videos…" autocomplete="off"></div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr>
+                <th>Title</th>
+                <th class="num-c sortable" data-sort="views">Views</th>
+                <th class="num-c sortable" data-sort="likes">Likes</th>
+                <th class="num-c sortable" data-sort="comments">Comments</th>
+                <th class="sortable" data-sort="published_at">Published</th>
+              </tr></thead>
+              <tbody id="allVideos"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ SETTINGS ============ -->
+      <section class="view" id="view-settings" data-title="Settings">
+        <div class="page-head">
+          <div>
+            <div class="eyebrow">configuration</div>
+            <h1>Settings</h1>
+            <p class="sub">This workspace keeps its encrypted API keys, OAuth client and channel on this computer. Secrets are never sent back to the browser.</p>
+          </div>
+          <div class="head-actions"><button class="btn ghost" id="btnAppearance"><span data-icon="palette"></span>Appearance</button></div>
+        </div>
+
+        <div class="tabs" id="settingsTabs" role="tablist">
+          <button class="tab active" data-tab="channel">Channel</button>
+          <button class="tab" data-tab="ai">AI</button>
+          <button class="tab" data-tab="pipeline">Pipeline</button>
+          <button class="tab" data-tab="system">System</button>
+        </div>
+
+        <div class="tab-panel active" id="tab-channel">
+          <div class="conn-banner" id="ytBanner">
+            <span class="dot" id="ytDot"></span>
+            <div class="cb-txt"><div class="cb-title" id="ytTitle">YouTube not connected</div><div class="cb-sub" id="ytSub">Connect a channel for auto-upload and analytics</div></div>
+            <button class="btn green" id="btnConnect"><span data-icon="youtube"></span>Connect channel</button>
+            <button class="btn ghost" id="btnCancelAuth" hidden>Cancel</button>
+            <button class="btn ghost danger-text" id="btnDisconnect" hidden>Disconnect</button>
+          </div>
+
+          <div class="settings-grid">
+            <div class="card">
+              <div class="card-head"><div><div class="eyebrow">oauth</div><h3>YouTube Data API</h3></div></div>
+              <div class="field"><label for="yt_client_id">OAuth client ID</label><input id="yt_client_id" type="text" placeholder="xxxxx.apps.googleusercontent.com" spellcheck="false" autocomplete="off"><p class="hint">Google Cloud → APIs &amp; Services → Credentials → OAuth client (Web application).</p></div>
+              <div class="field"><label for="yt_client_secret">Client secret <span class="saved-tag" id="ytSecretSaved" hidden>saved</span></label><input id="yt_client_secret" type="password" placeholder="••••••••" spellcheck="false" autocomplete="new-password"><p class="hint">Leave blank to keep the stored secret.</p></div>
+              <p class="mono-note">Register this exact callback in your Google OAuth client: <code id="oauthRedirect">/api/auth/callback</code>. Each installation connects its own channel.</p>
+            </div>
+            <div class="card">
+              <div class="card-head"><div><div class="eyebrow">defaults</div><h3>Upload</h3></div></div>
+              <div class="row">
+                <div class="field"><label for="default_privacy">Privacy</label><select id="default_privacy"><option value="public">Public</option><option value="unlisted">Unlisted</option><option value="private">Private</option></select></div>
+                <div class="field"><label for="category_id">Category ID</label><input id="category_id" type="text" placeholder="20" inputmode="numeric"></div>
+              </div>
+              <div class="field"><label for="upload_tags">Tags</label><input id="upload_tags" type="text" placeholder="shorts, gaming, clips" spellcheck="false"><p class="hint">Comma separated. <code>shorts</code> is always added.</p></div>
+              <p class="publish-note"><span data-icon="info"></span><span>No automatic publishing. Uploads are explicit per clip from History.</span></p>
+            </div>
+          </div>
+        </div>
+
+        <div class="tab-panel" id="tab-ai">
+          <div class="card">
+            <div class="card-head">
+              <div><div class="eyebrow">optional</div><h3>AI provider</h3></div>
+              <span class="pill muted" id="aiPill">rules mode</span>
+            </div>
+            <p class="sub tight">Any OpenAI-compatible endpoint works: OpenAI, OpenRouter, Ollama, LM Studio. This workspace uses its own key and URL. Without it, highlights come from transcript heuristics.</p>
+            <div class="row">
+              <div class="field"><label for="llm_base_url">Base URL</label><input id="llm_base_url" type="text" placeholder="https://api.openai.com/v1" spellcheck="false"></div>
+              <div class="field"><label for="llm_model">Model</label><input id="llm_model" type="text" placeholder="gpt-4o-mini" spellcheck="false"></div>
+            </div>
+            <div class="field"><label for="llm_api_key">API key <span class="saved-tag" id="llmKeySaved" hidden>saved</span></label><input id="llm_api_key" type="password" placeholder="sk-…" spellcheck="false" autocomplete="new-password"><p class="hint">Stored locally; sent only to the base URL above.</p></div>
+            <div class="test-row">
+              <button class="btn" id="btnTestAI"><span data-icon="bolt"></span>Test connection</button>
+              <span class="test-result" id="aiTestResult"></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="tab-panel" id="tab-pipeline">
+          <div class="settings-grid">
+            <div class="card">
+              <div class="card-head"><div><div class="eyebrow">transcription</div><h3>Analysis</h3></div></div>
+              <div class="field"><label for="whisper_model">Whisper model</label><select id="whisper_model"><option value="tiny">tiny — fastest</option><option value="base">base</option><option value="small">small — recommended</option><option value="medium">medium</option><option value="large-v3">large-v3 — slowest, best</option></select><p class="hint">First run downloads the model.</p></div>
+              <div class="field"><label class="switch"><input id="gpu_enabled" type="checkbox" checked><span class="sw"></span><span>Use GPU acceleration</span></label><p class="hint">CUDA for transcription and NVENC for rendering when available. Falls back to CPU automatically.</p></div>
+              <div class="field"><label for="short_length">Target clip length <span class="range-out" id="lengthOut">45s</span></label><input id="short_length" type="range" min="20" max="90" step="5" value="45"></div>
+            </div>
+            <div class="card">
+              <div class="card-head"><div><div class="eyebrow">render</div><h3>Output</h3></div></div>
+              <div class="row">
+                <div class="field"><label for="reframe">Reframe</label><select id="reframe"><option value="crop">Center crop</option><option value="blur">Blurred backdrop</option></select></div>
+                <div class="field"><label for="resolution">Resolution</label><select id="resolution"><option value="1080">1080 × 1920</option><option value="720">720 × 1280</option></select></div>
+              </div>
+              <div class="field"><label for="quality">Quality</label><select id="quality"><option value="high">High (CRF 18)</option><option value="balanced">Balanced (CRF 21)</option><option value="small">Small file (CRF 25)</option></select></div>
+              <p class="mono-note">Frames are re-encoded at 30 fps. NVENC is used when GPU acceleration is enabled; otherwise libx264. Audio is AAC 160k.</p>
+              <p class="mono-note">Caption style and animation live in <strong>Create → Render options → Caption studio</strong>.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="tab-panel" id="tab-system">
+          <div class="card">
+            <div class="card-head"><div><div class="eyebrow">diagnostics</div><h3>System health</h3></div><button class="btn ghost sm" id="btnHealth"><span data-icon="refresh"></span>Re-check</button></div>
+            <div class="health-grid" id="healthGrid"><div class="skeleton sk-line"></div><div class="skeleton sk-line"></div></div>
+            <div class="health-meta" id="healthMeta"></div>
+          </div>
+        </div>
+
+        <div class="save-bar">
+          <span class="save-msg" id="saveMsg"></span>
+          <button class="btn primary" id="btnSave"><span data-icon="check"></span>Save settings</button>
+        </div>
+      </section>
+
+    </div>
+  </main>
+</div>
+
+<!-- ============ APPEARANCE ============ -->
+<aside class="tweaks" id="tweaks" aria-hidden="true" aria-label="Appearance">
+  <header class="tw-head">
+    <div><div class="eyebrow">personalize</div><h3>Appearance</h3></div>
+    <button class="icon-btn" id="twClose" aria-label="Close"><span data-icon="x"></span></button>
+  </header>
+  <div class="tw-scroll">
+    <section class="tw-section">
+      <div class="tw-label">Mode</div>
+      <div class="seg full" id="twMode"><button data-mode="dark">Dark</button><button data-mode="light">Light</button><button data-mode="system">Auto</button></div>
+    </section>
+    <section class="tw-section">
+      <div class="tw-label">Palette</div>
+      <div class="palette-grid" id="paletteGrid"></div>
+    </section>
+    <section class="tw-section">
+      <div class="tw-label">Accent</div>
+      <div class="swatches" id="accentSwatches"></div>
+      <label class="custom-color"><span>Custom</span><input type="color" id="accentCustom" value="#fe8019"></label>
+    </section>
+    <section class="tw-section">
+      <div class="tw-label">Typography</div>
+      <div class="seg full" id="twFont"><button data-value="mono">Mono</button><button data-value="sans">Sans</button><button data-value="editorial">Editorial</button></div>
+    </section>
+    <section class="tw-section tw-split">
+      <div><div class="tw-label">Corners</div><div class="seg" id="twRadius"><button data-value="sharp">Sharp</button><button data-value="soft">Soft</button><button data-value="round">Round</button></div></div>
+      <div><div class="tw-label">Density</div><div class="seg" id="twDensity"><button data-value="compact">Compact</button><button data-value="cozy">Cozy</button><button data-value="comfy">Comfy</button></div></div>
+    </section>
+    <section class="tw-section">
+      <div class="tw-label">Motion</div>
+      <div class="seg full" id="twMotion"><button data-value="full">Full</button><button data-value="reduced">Reduced</button><button data-value="off">Off</button></div>
+    </section>
+    <section class="tw-section">
+      <div class="tw-label">Atmosphere</div>
+      <div class="tw-rows">
+        <label class="switch"><input type="checkbox" data-effect="aurora" checked><span class="sw"></span><span>Aurora glow</span></label>
+        <label class="switch"><input type="checkbox" data-effect="grain" checked><span class="sw"></span><span>Film grain</span></label>
+        <label class="switch"><input type="checkbox" data-effect="grid"><span class="sw"></span><span>Grid overlay</span></label>
+        <label class="switch"><input type="checkbox" data-effect="scan"><span class="sw"></span><span>Scanlines</span></label>
+        <label class="switch"><input type="checkbox" data-effect="cursor" checked><span class="sw"></span><span>Vice cursor</span></label>
+        <label class="switch"><input type="checkbox" data-effect="sound"><span class="sw"></span><span id="soundLabel">Interface sounds</span></label>
+      </div>
+    </section>
+    <button class="btn ghost full-width" id="twReset"><span data-icon="rotate"></span>Reset appearance</button>
+    <p class="tw-note">Saved to this workspace and synced to this computer. Palette pairs with dark / light automatically.</p>
+  </div>
+</aside>
+<div class="scrim" id="twScrim"></div>
+
+<!-- ============ COMMAND PALETTE ============ -->
+<div class="overlay cmdk-overlay" id="cmdOverlay" hidden>
+  <div class="cmdk" role="dialog" aria-modal="true" aria-label="Command palette">
+    <div class="cmdk-top"><span data-icon="search"></span><input id="cmdInput" placeholder="Jump to a page, run a command…" autocomplete="off" spellcheck="false"><kbd>esc</kbd></div>
+    <div class="cmdk-list" id="cmdList"></div>
+    <div class="cmdk-foot"><span><kbd>↑</kbd><kbd>↓</kbd> navigate</span><span><kbd>↵</kbd> run</span><span><kbd>1</kbd>–<kbd>6</kbd> views</span></div>
+  </div>
+</div>
+
+<!-- ============ MODAL ============ -->
+<div class="overlay" id="modalOverlay" hidden>
+  <div class="modal" id="modalBox" role="dialog" aria-modal="true">
+    <header class="modal-head"><h3 id="modalTitle"></h3><button class="icon-btn" id="modalClose" aria-label="Close"><span data-icon="x"></span></button></header>
+    <div class="modal-body" id="modalBody"></div>
+    <footer class="modal-foot" id="modalFoot"></footer>
+  </div>
+</div>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<canvas id="confetti" aria-hidden="true"></canvas>
+
+<script src="app.js?v=20261116-1"></script>
+</body>
+</html>

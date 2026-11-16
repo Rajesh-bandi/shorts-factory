@@ -1,0 +1,26 @@
+# Local application data, media and secrets
+data/
+.env
+.env.*
+!.env.example
+.freebuff/
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Node / Electron
+node_modules/
+npm-debug.log*
+*.log
+
+# Desktop build output
+build/
+dist/
+release/
+squashfs-root/
+
+# Local QA artifacts
+.qa/

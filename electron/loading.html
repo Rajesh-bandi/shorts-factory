@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; img-src 'self' data:">
+<title>Starting Shorts Factory</title>
+<style>
+  :root { color-scheme: dark; font-family: system-ui, sans-serif; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    display: grid;
+    place-content: center;
+    justify-items: center;
+    gap: 18px;
+    background:
+      radial-gradient(ellipse at 50% 78%, rgba(255, 46, 126, .23), transparent 44%),
+      radial-gradient(ellipse at 50% 0%, rgba(255, 176, 58, .1), transparent 46%),
+      #0b0714;
+    color: #fff4ee;
+    overflow: hidden;
+  }
+  .mark {
+    width: 70px;
+    height: 70px;
+    display: grid;
+    place-items: center;
+    color: #ffd166;
+    font-size: 25px;
+    border: 1px solid rgba(255, 46, 126, .6);
+    background: linear-gradient(145deg, rgba(255, 46, 126, .22), transparent);
+    clip-path: polygon(0 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%);
+    box-shadow: 0 0 38px -12px #ff2e7e;
+  }
+  h1 {
+    margin: 0;
+    font-family: Impact, "Arial Narrow", sans-serif;
+    font-size: 30px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: -.035em;
+  }
+  h1 em { color: #ffb03a; font-style: normal; }
+  .bar { width: 168px; height: 2px; background: rgba(255, 255, 255, .12); overflow: hidden; }
+  .bar span {
+    display: block;
+    width: 38%;
+    height: 100%;
+    background: linear-gradient(90deg, #ff2e7e, #ffb03a);
+    animation: sweep 1.05s ease-in-out infinite;
+  }
+  small { color: #a689b8; font-family: ui-monospace, monospace; font-size: 9px; letter-spacing: .22em; text-transform: uppercase; }
+  @keyframes sweep { from { transform: translateX(-110%); } to { transform: translateX(370%); } }
+  @media (prefers-reduced-motion: reduce) { .bar span { animation: none; width: 100%; opacity: .6; } }
+</style>
+</head>
+<body>
+  <div class="mark">▶</div>
+  <h1>shorts <em>factory</em></h1>
+  <div class="bar"><span></span></div>
+  <small>warming the neon · local studio</small>
+</body>
+</html>

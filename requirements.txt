@@ -1,0 +1,19 @@
+yt-dlp>=2025.1.1
+fastapi>=0.115.0
+uvicorn>=0.30.0
+SQLAlchemy>=2.0.36
+psycopg[binary]>=3.2.0
+argon2-cffi>=23.1.0
+cryptography>=43.0.0
+google-api-python-client>=2.100.0
+google-auth>=2.23.0
+google-auth-oauthlib>=1.1.0
+faster-whisper>=1.0.0
+numpy>=1.26.0
+requests>=2.31.0
+
+# CUDA 12 runtime for faster-whisper GPU acceleration (Linux x86_64).
+# The app falls back to CPU when these are absent or the GPU is unavailable.
+nvidia-cuda-runtime-cu12>=12.4.0; platform_system == "Linux" and platform_machine == "x86_64"
+nvidia-cuda-nvrtc-cu12>=12.4.0; platform_system == "Linux" and platform_machine == "x86_64"
+nvidia-cublas-cu12>=12.4.0; platform_system == "Linux" and platform_machine == "x86_64"
