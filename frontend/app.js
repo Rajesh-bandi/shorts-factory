@@ -631,7 +631,7 @@
         <div class="review-tools"><button class="btn ghost sm" data-act="all" data-id="${j.id}">All</button><button class="btn ghost sm" data-act="none" data-id="${j.id}">None</button></div></div>
       <div class="cands">${rows}</div>
       <div class="review-actions">
-        <span class="job-publish-note">${icon("info")}Render is local · upload from History</span>
+        <span class="job-publish-note">${icon("info")}${j.options?.auto_upload ? "Auto-upload on · AI metadata" : "Auto-upload off · clips stay in History"}</span>
         <select data-job-opt="privacy" aria-label="Privacy">${optionsHtml([["public", "Public"], ["unlisted", "Unlisted"], ["private", "Private"]], privacy)}</select>
         <select data-job-opt="caption" aria-label="Caption style">${optionsHtml([["gruvbox", "Gruvbox captions"], ["omarchy", "Omarchy green"], ["classic", "Classic"], ["boxed", "Boxed"], ["clean", "Clean"], ["neon", "Neon"]], caption)}</select>
         <select data-job-opt="animation" aria-label="Caption animation">${optionsHtml([["static", "Static captions"], ["word", "Word highlight"], ["pop", "Pop-in captions"]], animation)}</select>
@@ -648,14 +648,15 @@
     return `<div class="uploads">${j.uploads.map((u) => {
       const file = u.path ? String(u.path).split("/").pop() : "";
       const thumb = u.thumb ? String(u.thumb).split("/").pop() : "";
+      const thumbSrc = u.clip_id ? `/api/clips/${u.clip_id}/thumb` : (thumb ? `/media/${encodeURIComponent(thumb)}` : "");
       const qa = u.qa_status && u.qa_status !== "pending" ? `<span class="pill ${u.qa_status === "pass" ? "ok" : u.qa_status === "failed" ? "bad" : "muted"}">QA ${esc(u.qa_status)}</span>` : "";
       return `<div class="upload">
-        <div class="up-thumb">${thumb ? `<img src="/media/${encodeURIComponent(thumb)}" alt="">` : icon("film")}</div>
-        <div class="up-main"><strong>${esc(u.title)}</strong><small>${u.uploaded ? "YouTube · " + esc(u.privacy || "public") : "saved locally"} ${qa}</small></div>
+        <div class="up-thumb">${thumbSrc ? `<img src="${thumbSrc}" alt="">` : icon("film")}</div>
+        <div class="up-main"><strong>${esc(u.title)}</strong><small>${u.uploaded ? "YouTube · " + esc(u.privacy || "public") : "not uploaded"} ${qa}</small></div>
         <div class="up-actions">
           ${u.url ? `<a class="btn ghost sm" href="${esc(u.url)}" target="_blank" rel="noopener">${icon("external")}Watch</a>` : ""}
           ${!u.uploaded && u.clip_id ? `<button class="btn primary sm" data-act="upload" data-id="${j.id}" data-clip="${u.clip_id}">${icon("youtube")}Upload with AI</button>` : ""}
-          ${file ? `<button class="btn ghost sm" data-act="play" data-file="${esc(file)}">${icon("play")}Play</button><button class="icon-btn" data-copy="${esc(u.path)}" title="Copy file path">${icon("copy")}</button>` : ""}
+          ${file && u.clip_id ? `<button class="btn ghost sm" data-act="play" data-clip="${u.clip_id}" data-title="${esc(u.title)}">${icon("play")}Play</button><button class="icon-btn" data-copy="${esc(u.path)}" title="Copy file path">${icon("copy")}</button>` : file ? `<button class="btn ghost sm" data-act="play" data-file="${esc(file)}">${icon("play")}Play</button><button class="icon-btn" data-copy="${esc(u.path)}" title="Copy file path">${icon("copy")}</button>` : ""}
         </div></div>`;
     }).join("")}</div>${rerender}`;
   }
@@ -866,6 +867,10 @@
     const fresh = `${Date.now()}`;
     showModal({ title: "Rendered clip", wide: true, body: `<video class="clip-video" controls autoplay playsinline src="/media/${encodeURIComponent(file)}?v=${fresh}"></video><p class="hint" style="margin-top:8px">${esc(file)}</p>` });
   }
+  function openStoredClip(id, title = "Rendered clip") {
+    const fresh = `${Date.now()}`;
+    showModal({ title, wide: true, body: `<video class="clip-video" controls autoplay playsinline src="/api/clips/${encodeURIComponent(id)}/file?v=${fresh}"></video><p class="hint" style="margin-top:8px">job clip #${esc(id)}</p>` });
+  }
   async function handleJobClick(e) {
     const openEl = e.target.closest("[data-open-job]");
     if (openEl) { go("jobs"); state.jobOpen[Number(openEl.dataset.openJob)] = true; renderJobs(true); return; }
@@ -880,7 +885,7 @@
       return;
     }
     if (act === "preview") return openPreview(id, Number(btn.dataset.idx));
-    if (act === "play") return openClip(btn.dataset.file);
+    if (act === "play") return btn.dataset.clip ? openStoredClip(btn.dataset.clip, btn.dataset.title || "Rendered clip") : openClip(btn.dataset.file);
     if (act === "hooklab") return openHookLab(id, Number(btn.dataset.idx));
     if (act === "captions") return openCaptionEditor(id, Number(btn.dataset.idx));
     if (act === "upload") return openUploadModal(Number(btn.dataset.clip));
@@ -1009,6 +1014,7 @@
     if ($("#manualTimes")) $("#manualTimes").hidden = !manual;
     if ($("#durationField")) $("#durationField").hidden = manual;
     if ($("#layoutField")) $("#layoutField").hidden = manual;
+    if ($("#autoUploadField")) $("#autoUploadField").hidden = manual || batch;
     if ($("#createFlow")) $("#createFlow").hidden = manual;
     if ($("#createActive")) $("#createActive").hidden = manual;
     if ($("#manualPanel")) $("#manualPanel").hidden = !manual;
@@ -1070,6 +1076,7 @@
         clip_duration: Number($("#createDuration").value) || 45,
         clip_mode: $("#createMode").value,
         reframe: $("#createReframe").value,
+        auto_upload: state.createMode === "auto" && !!$("#createAutoUpload")?.checked,
         ...captionOptions()
       }) });
       input.value = "";
@@ -1248,7 +1255,7 @@
     }
     grid.innerHTML = list.map((c) => {
       const on = !!state.historySel[c.id];
-      const thumb = c.thumb && c.exists ? `/media/${encodeURIComponent(c.thumb)}` : "";
+      const thumb = c.thumb && c.exists ? `/api/clips/${c.id}/thumb` : "";
       const uploading = c.upload_state === "uploading";
       const failedUpload = c.upload_state === "error";
       const status = !c.exists
@@ -1259,7 +1266,7 @@
             ? `<span class="status warn"><i></i>uploading ${Math.round(c.upload_progress || 0)}%</span>`
             : failedUpload
               ? `<span class="status bad"><i></i>upload failed</span>`
-              : `<span class="status muted"><i></i>local</span>`;
+              : `<span class="status muted"><i></i>not uploaded</span>`;
       const qaPill = c.qa_status && c.qa_status !== "pending" ? `<span class="pill ${c.qa_status === "pass" ? "ok" : c.qa_status === "failed" ? "bad" : "muted"}">QA ${esc(c.qa_status)}</span>` : "";
       return `<article class="history-card${on ? " selected" : ""}" data-history-card="${c.id}">
         <input type="checkbox" class="history-check" data-history-check="${c.id}"${on ? " checked" : ""} aria-label="Select ${esc(c.title)}">
@@ -1290,7 +1297,7 @@
     showModal({
       title: clip.title,
       wide: true,
-      body: `<video class="clip-video" controls autoplay playsinline src="/media/${encodeURIComponent(clip.file)}"></video>
+      body: `<video class="clip-video" controls autoplay playsinline src="/api/clips/${clip.id}/file?v=${Date.now()}"></video>
         <p class="hint" style="margin-top:8px">${timeLabel(clip.duration)} · ${clip.uploaded ? "Published to YouTube" : "Saved locally"} · job #${clip.job_id} · QA ${esc(clip.qa_status || "pending")}</p>
         ${clip.url ? `<p class="hint"><a href="${esc(clip.url)}" target="_blank" rel="noopener">Open on YouTube ↗</a></p>` : ""}`,
       foot: `${clip.uploaded ? `<button class="btn ghost danger-text" id="btnDeleteYt">${icon("trash")}Remove from YouTube</button>` : `<button class="btn primary" id="btnUploadFromView">${icon("youtube")}Upload with AI</button>`}<a class="btn ghost" href="/api/clips/${clip.id}/export">${icon("download")}Download MP4</a>`
@@ -1542,7 +1549,7 @@
   const SETTING_IDS = ["yt_client_id", "yt_client_secret", "default_privacy", "upload_tags", "category_id",
     "llm_base_url", "llm_api_key", "llm_model", "whisper_model", "gpu_enabled", "short_length", "clip_mode", "clip_duration",
     "reframe", "resolution", "quality", "caption_preset", "caption_size", "caption_position",
-    "caption_color", "caption_highlight", "caption_animation", "caption_uppercase", "caption_box"];
+    "caption_color", "caption_highlight", "caption_animation", "caption_uppercase", "caption_box", "output_dir"];
 
   async function loadSettings() {
     try {
@@ -1612,6 +1619,10 @@
       const payload = collectSettings();
       const res = await api("/settings", { method: "POST", body: JSON.stringify({ settings: payload }) });
       Object.assign(state.settings, payload);
+      if (res.output_dir !== undefined) {
+        state.settings.output_dir = res.output_dir;
+        if ($("#output_dir")) $("#output_dir").value = res.output_dir;
+      }
       if (payload.yt_client_secret) { state.settings.has_yt_client_secret = true; $("#yt_client_secret").value = ""; $("#yt_client_secret").placeholder = "•••• saved — leave blank to keep"; $("#ytSecretSaved").hidden = false; }
       if (payload.llm_api_key) { state.settings.has_llm_api_key = true; $("#llm_api_key").value = ""; $("#llm_api_key").placeholder = "•••• saved — leave blank to keep"; $("#llmKeySaved").hidden = false; }
       $("#aiPill").textContent = res.llm_available ? "AI ready" : "rules mode";
@@ -1623,6 +1634,16 @@
       if (!silent) toast("Settings saved", "ok");
     } catch (e) { toast(e.message, "err"); }
     finally { if (btn) { btn.classList.remove("loading"); btn.disabled = false; } }
+  }
+  async function chooseOutputFolder() {
+    const input = $("#output_dir");
+    if (!window.shortsDesktop || !window.shortsDesktop.chooseFolder) {
+      return toast("Type an absolute folder path here — the native picker is available in the desktop app", "warn");
+    }
+    try {
+      const selected = await window.shortsDesktop.chooseFolder(input?.value.trim() || "");
+      if (selected && input) input.value = selected;
+    } catch (e) { toast(e.message || "Could not open the folder picker", "err"); }
   }
   function switchTab(tab, updateHash = true) {
     const valid = ["channel", "ai", "pipeline", "system"];
@@ -2308,6 +2329,7 @@
     $$("th.sortable").forEach((th) => th.addEventListener("click", () => toggleSort(th.dataset.sort)));
     $("#settingsTabs").addEventListener("click", (e) => { const b = e.target.closest(".tab"); if (b) switchTab(b.dataset.tab); });
     $("#btnSave").addEventListener("click", () => saveSettings());
+    if ($("#btnChooseOutput")) $("#btnChooseOutput").addEventListener("click", chooseOutputFolder);
     $("#btnTestAI").addEventListener("click", testAI);
     $("#btnHealth").addEventListener("click", () => loadHealth(true));
     $("#btnConnect").addEventListener("click", startConnect);

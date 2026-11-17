@@ -403,6 +403,18 @@ function stopBackend() {
 function installIpc() {
   ipcMain.handle("shorts-desktop:open-external", (_event, url) => external(String(url || "")));
   ipcMain.handle("shorts-desktop:data-path", () => dataPath());
+  ipcMain.handle("shorts-desktop:choose-folder", async (_event, startPath) => {
+    const requested = String(startPath || "").trim();
+    const defaultPath = path.isAbsolute(requested) && fs.existsSync(requested)
+      ? requested
+      : app.getPath("videos");
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: "Choose where rendered clips are stored",
+      defaultPath,
+      properties: ["openDirectory", "createDirectory"],
+    });
+    return result.canceled ? null : result.filePaths[0] || null;
+  });
   ipcMain.handle("shorts-desktop:install-update", (event, payload) => installUpdate(event.sender, payload));
 }
 

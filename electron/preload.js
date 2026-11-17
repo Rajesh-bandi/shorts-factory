@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld("shortsDesktop", {
   platform: process.platform,
   openExternal: (url) => ipcRenderer.invoke("shorts-desktop:open-external", String(url || "")),
   dataPath: () => ipcRenderer.invoke("shorts-desktop:data-path"),
+  chooseFolder: (startPath) => ipcRenderer.invoke("shorts-desktop:choose-folder", String(startPath || "")),
   installUpdate: (payload) => ipcRenderer.invoke("shorts-desktop:install-update", payload),
   onUpdateStatus: (callback) => {
     if (typeof callback !== "function") return () => {};

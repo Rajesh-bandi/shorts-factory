@@ -3,8 +3,8 @@
 Turn long YouTube videos into vertical Shorts on your own computer. The app
 reads the timed transcript first, lets AI choose the strongest moments,
 downloads **only the selected ranges**, and renders 9:16 clips with burned-in
-captions. Rendering is always local; publishing is an explicit per-clip action
-from History.
+captions. Rendering is always local; publishing is explicit per clip from
+History, or can be enabled for normal AI-clip jobs with AI-written metadata.
 
 This is now a **single-workspace desktop app**: no sign-in screen, no account
 separation, and no server to rent. Each installation keeps its own database,
@@ -130,7 +130,8 @@ for both platforms and publishes the installers and `SHA256SUMS.txt`.
 - Section-only downloads, cached retries, CPU/GPU rendering, automated QA.
 - Durable queued jobs with ETA, queue position and live activity logs.
 - History, batch/series mode, analytics, growth advisor and CSV export.
-- Optional YouTube connect/upload with AI-written metadata.
+- Optional YouTube connect/upload with AI-written metadata, including automatic
+  upload after normal AI-clip renders (never batch jobs).
 - Vice 6 appearance: sunset and daytime themes, configurable cursor, sound,
   motion, palette, typography, density and focus states.
 - Local appearance preferences sync to the workspace database, with an
@@ -148,7 +149,8 @@ Open **Settings** in the app:
    callback.
 3. **AI** — enter any OpenAI-compatible Base URL, API key and model. Without
    it, the pipeline falls back to local heuristics.
-4. **Pipeline** — choose Whisper model, GPU, clip length and output quality.
+4. **Pipeline** — choose Whisper model, GPU, clip length, output quality and the
+   folder where finished clips are stored.
 
 Secrets are encrypted at rest and never returned to the browser after saving.
 A lost `APP_SECRET_KEY` makes stored tokens and API keys unreadable, so keep it
@@ -173,8 +175,10 @@ retention/watch-time metrics.
 5. Automated QA checks duration, 9:16 aspect, audio presence, loudness and
    clipping. Failed QA blocks upload unless explicitly forced.
 
-Render never uploads. Batch/series mode queues up to 20 source URLs at once.
-The local job queue records ETA as a conservative estimate; it appears as a
+Normal AI-clip runs can optionally auto-upload their rendered Shorts with AI
+metadata; batch, series and manual cuts always stay local. Every render is in
+History, with **Not uploaded** and **Uploaded** filters. Batch/series mode queues
+up to 20 source URLs at once. The local job queue records ETA as a conservative estimate; it appears as a
 queue position while waiting and a remaining-time estimate once progress is
 measurable.
 

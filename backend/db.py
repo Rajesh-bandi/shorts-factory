@@ -611,6 +611,14 @@ def get_clips(user_id, ids):
         return _rows(rows)
 
 
+def list_job_clips(user_id, job_id):
+    with _read() as s:
+        rows = s.scalars(
+            select(Clip).where(Clip.user_id == int(user_id), Clip.job_id == int(job_id))
+        ).all()
+        return _rows(rows)
+
+
 def delete_clips(user_id, ids):
     rows = get_clips(user_id, ids)
     if not rows:

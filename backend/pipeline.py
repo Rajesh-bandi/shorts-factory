@@ -8,7 +8,7 @@ import json
 import os
 import threading
 
-from . import clipper, db, downloader, highlights, qa, settings as s, transcribe
+from . import assistant, clipper, db, downloader, highlights, qa, settings as s, storage, transcribe, uploader
 
 _analyze_lock = threading.Lock()
 _events_lock = threading.Lock()
@@ -108,6 +108,7 @@ def _options(user_id, job=None, extra=None):
         "quality": s.get(user_id, "quality", "balanced") or "balanced",
         "tags": s.get(user_id, "upload_tags", "shorts, clips") or "shorts, clips",
         "category_id": str(s.get(user_id, "category_id", "") or ""),
+        "output_dir": s.get(user_id, "output_dir", "") or "",
         "auto_upload": False,
     }
     if job:
@@ -531,6 +532,68 @@ def _render_clip(job_id, job, user_id, opts, meta, cand, segments, idx, ev):
     )
 
 
+def _auto_upload(job_id, job, user_id, opts, uploads):
+    """Upload fresh normal-mode renders with AI metadata; batches stay local."""
+    if not uploads or not opts.get("auto_upload") or job.get("batch_id"):
+        return uploads
+    if not uploader.connected(user_id):
+        db.log(job_id, "Auto-upload is on, but no YouTube channel is connected — clips stay in History as not uploaded", "warn")
+        return uploads
+    tags_setting = str(opts.get("tags") or "shorts, clips")
+    category_id = str(opts.get("category_id") or "")
+    total = len(uploads)
+    db.update_job(job_id, stage="uploading", progress=0.94)
+    for n, entry in enumerate(uploads, 1):
+        clip_id = int(entry["clip_id"])
+        clip = db.get_clip(user_id, clip_id)
+        if not clip:
+            continue
+        if entry.get("qa_status") == "failed":
+            db.log(job_id, f"Skipped auto-upload for “{clip.get('title') or 'clip'}” because QA failed — it stays in History", "warn")
+            continue
+        db.log(job_id, f"Auto-upload {n}/{total}: writing title, description and tags with AI…")
+        meta = assistant.suggest_metadata(user_id, job, clip)
+        title = str((meta.get("titles") or [clip.get("title") or "Short"])[0]).strip()[:100]
+        description = str(meta.get("description") or clip.get("description") or "")[:5000]
+        tags = [str(t).strip().lstrip("#") for t in (meta.get("tags") or []) if str(t).strip()]
+        if not tags:
+            tags = [t.strip() for t in tags_setting.split(",") if t.strip()]
+        db.update_clip(
+            user_id, clip_id, title=title, description=description,
+            upload_state="uploading", upload_progress=0, upload_error=None,
+        )
+        entry.update({"title": title, "uploaded": False, "upload_state": "uploading"})
+        db.update_job(job_id, uploads=json.dumps(uploads))
+
+        def progress(pct):
+            db.update_clip(user_id, clip_id, upload_progress=pct, upload_state="uploading")
+
+        try:
+            result = uploader.upload_short(
+                user_id, clip["path"], title, description, opts.get("privacy", "private"),
+                stage_cb=progress, tags=tags, category_id=category_id, scheduled_at=None,
+            )
+        except Exception as e:
+            message = str(e)[:1000]
+            db.update_clip(user_id, clip_id, upload_state="error", upload_error=message)
+            entry.update({"upload_state": "error", "upload_error": message})
+            db.update_job(job_id, uploads=json.dumps(uploads))
+            db.log(job_id, f"Auto-upload failed for “{title}”: {e} — clip stays in History", "error")
+            continue
+        db.update_clip(
+            user_id, clip_id, uploaded=True, url=result["url"],
+            youtube_id=result["video_id"], privacy=result["privacy"],
+            upload_state="uploaded", upload_progress=100, upload_error=None,
+        )
+        entry.update({
+            "uploaded": True, "url": result["url"], "youtube_id": result["video_id"],
+            "privacy": result["privacy"], "upload_state": "uploaded", "upload_error": None,
+        })
+        db.update_job(job_id, uploads=json.dumps(uploads))
+        db.log(job_id, f"Auto-uploaded to YouTube: {result['url']}")
+    return uploads
+
+
 def run_render(job_id):
     job = db.get_job(job_id)
     if not job:
@@ -591,6 +654,13 @@ def run_render(job_id):
             result = _render_clip(job_id, job, user_id, opts, meta, cand, segments, idx, ev)
             _check(ev)
 
+            try:
+                result["path"], result["thumb"] = storage.place_clip(
+                    user_id, result["path"], result.get("thumb")
+                )
+            except Exception as e:
+                db.log(job_id, f"Could not move the clip to the configured output folder ({e}); keeping it in the app media folder", "warn")
+
             duration = (
                 sum(max(0.0, float(c["end"]) - float(c["start"])) for c in cuts)
                 if len(cuts) > 1 else cand["end"] - cand["start"]
@@ -621,8 +691,18 @@ def run_render(job_id):
             db.log(job_id, f"Saved locally: {os.path.basename(result['path'])} · QA {qa_result['status']}")
 
         _check(ev)
+        try:
+            uploads = _auto_upload(job_id, job, user_id, opts, uploads)
+        except Exception as e:
+            db.log(job_id, f"Auto-upload stopped ({e}); rendered clips are safe in History", "error")
+        _check(ev)
         db.update_job(job_id, status="done", stage="done", progress=1.0, uploads=json.dumps(uploads))
-        db.log(job_id, f"Job complete ✅ — {len(uploads)} short{'' if len(uploads) == 1 else 's'} rendered; upload from History when ready")
+        uploaded_count = sum(1 for item in uploads if item.get("uploaded"))
+        if uploaded_count:
+            detail = f"{uploaded_count} of {len(uploads)} auto-uploaded to YouTube"
+        else:
+            detail = "upload from History when ready"
+        db.log(job_id, f"Job complete ✅ — {len(uploads)} short{'' if len(uploads) == 1 else 's'} rendered; {detail}")
     except JobCanceled:
         db.update_job(
             job_id, status="canceled", stage="canceled", uploads=json.dumps(uploads),

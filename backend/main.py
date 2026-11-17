@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field
 
 from . import (
     advisor, analytics, assistant, auth, config, db, downloader, gpu, pipeline,
-    qa, settings, updates, uploader, worker,
+    qa, settings, storage, updates, uploader, worker,
 )
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -271,8 +271,17 @@ def get_settings(user: CurrentUser):
 
 @app.post("/api/settings")
 def post_settings(payload: SettingsPayload, user: CurrentUser):
+    if "output_dir" in payload.settings:
+        try:
+            payload.settings["output_dir"] = storage.validate_output_dir(payload.settings["output_dir"])
+        except ValueError as e:
+            raise HTTPException(400, str(e))
     settings.update(user["id"], payload.settings)
-    return {"ok": True, "llm_available": settings.llm_available(user["id"])}
+    return {
+        "ok": True,
+        "llm_available": settings.llm_available(user["id"]),
+        "output_dir": settings.get(user["id"], "output_dir", "") or "",
+    }
 
 
 # ---------- workspace appearance ----------
@@ -316,6 +325,7 @@ class JobCreate(BaseModel):
     url: str
     short_count: int = 2
     batch_id: int | None = None
+    auto_upload: bool | None = None
     privacy: str | None = None
     caption_preset: str | None = None
     caption_size: int | None = None
@@ -357,6 +367,7 @@ class ClipEdit(BaseModel):
 class JobSelect(BaseModel):
     indices: list[int] = Field(default_factory=list)
     clips: list[ClipEdit] | None = None
+    auto_upload: bool | None = None
     privacy: str | None = None
     caption_preset: str | None = None
     caption_size: int | None = None
@@ -409,6 +420,7 @@ class BatchCreate(BaseModel):
 def _job_options(payload):
     return {
         k: v for k, v in {
+            "auto_upload": getattr(payload, "auto_upload", None),
             "privacy": payload.privacy,
             "caption_preset": getattr(payload, "caption_preset", None),
             "caption_size": getattr(payload, "caption_size", None),
@@ -436,7 +448,10 @@ def _check_youtube_url(url: str):
 def create_job(payload: JobCreate, user: CurrentUser):
     url = _check_youtube_url(payload.url)
     count = 1 if payload.clip_mode == "multi_cut" else max(1, min(payload.short_count, 5))
-    job_id = db.create_job(user["id"], url, count, _job_options(payload), batch_id=payload.batch_id, kind="analyze")
+    options = _job_options(payload)
+    if payload.batch_id:
+        options["auto_upload"] = False
+    job_id = db.create_job(user["id"], url, count, options, batch_id=payload.batch_id, kind="analyze")
     db.log(job_id, "Job queued — transcript first, then selective downloads")
     worker.wake()
     return {"id": job_id}
@@ -635,13 +650,17 @@ def delete_job(job_id: int, user: CurrentUser):
         raise HTTPException(404, "Job not found")
     if job["status"] in ("queued", "running", "canceling"):
         raise HTTPException(409, "Cancel the job before deleting it")
+    clips = db.list_job_clips(user["id"], job_id)
     db.delete_job(user["id"], job_id)
-    _purge_media(user["id"], job_id)
+    _purge_media(user["id"], job_id, clips)
     return {"ok": True}
 
 
-def _purge_media(user_id, job_id):
-    for path in downloader.job_media_files(user_id, job_id):
+def _purge_media(user_id, job_id, clips=()):
+    paths = list(downloader.job_media_files(user_id, job_id))
+    for clip in clips:
+        paths.extend(path for path in (clip.get("path"), clip.get("thumb")) if path)
+    for path in paths:
         try:
             if os.path.isfile(path):
                 os.remove(path)
@@ -696,20 +715,10 @@ def save_candidate_captions(job_id: int, idx: int, payload: CandidateCaptions, u
 
 
 # ---------- clip history / publishing ----------
-def _inside_user(path, user_id):
-    if not path:
-        return False
-    try:
-        parent = os.path.dirname(os.path.abspath(path))
-        return parent == os.path.abspath(downloader.user_media_dir(user_id))
-    except (OSError, ValueError):
-        return False
-
-
 def _public_clip(row, user_id):
     path = row.get("path") or ""
     thumb = row.get("thumb") or ""
-    exists = _inside_user(path, user_id) and os.path.isfile(path)
+    exists = bool(path) and os.path.isfile(path)
     try:
         qa_data = json.loads(row.get("qa_json") or "{}")
     except (json.JSONDecodeError, TypeError):
@@ -719,8 +728,8 @@ def _public_clip(row, user_id):
         "job_id": row.get("job_id"),
         "title": row.get("title") or "Short",
         "description": row.get("description") or "",
-        "file": os.path.basename(path) if _inside_user(path, user_id) else None,
-        "thumb": os.path.basename(thumb) if _inside_user(thumb, user_id) else None,
+        "file": os.path.basename(path) if path else None,
+        "thumb": os.path.basename(thumb) if thumb else None,
         "duration": row.get("duration") or 0,
         "uploaded": bool(row.get("uploaded")),
         "privacy": row.get("privacy"),
@@ -760,6 +769,23 @@ def get_clip(clip_id: int, user: CurrentUser):
     if not row:
         raise HTTPException(404, "Clip not found")
     return _public_clip(row, user["id"])
+
+
+@app.get("/api/clips/{clip_id}/file")
+def clip_file(clip_id: int, user: CurrentUser):
+    """Serve a rendered clip from either the app media folder or a custom output folder."""
+    clip = db.get_clip(user["id"], clip_id)
+    if not clip or not clip.get("path") or not os.path.isfile(clip["path"]):
+        raise HTTPException(404, "Clip file not found")
+    return FileResponse(clip["path"], media_type="video/mp4")
+
+
+@app.get("/api/clips/{clip_id}/thumb")
+def clip_thumb(clip_id: int, user: CurrentUser):
+    clip = db.get_clip(user["id"], clip_id)
+    if not clip or not clip.get("thumb") or not os.path.isfile(clip["thumb"]):
+        raise HTTPException(404, "Clip thumbnail not found")
+    return FileResponse(clip["thumb"], media_type="image/jpeg")
 
 
 @app.get("/api/clips/{clip_id}/metadata")
@@ -835,7 +861,7 @@ def upload_clip(clip_id: int, payload: ClipUpload, user: CurrentUser):
         raise HTTPException(400, "This clip is already on YouTube")
     if clip.get("upload_state") == "uploading":
         raise HTTPException(409, "This clip is already uploading")
-    if not _inside_user(clip["path"], user["id"]) or not os.path.isfile(clip["path"]):
+    if not clip.get("path") or not os.path.isfile(clip["path"]):
         raise HTTPException(400, "The rendered file is missing")
     if clip.get("qa_status") == "failed" and not payload.force:
         raise HTTPException(409, "QA failed for this clip. Fix/re-render it or force the upload.")
@@ -919,7 +945,7 @@ def delete_clips(payload: ClipDelete, user: CurrentUser):
     for row in rows:
         for key in ("path", "thumb"):
             path = row.get(key)
-            if not _inside_user(path, user["id"]):
+            if not path:
                 continue
             try:
                 size = os.path.getsize(path)

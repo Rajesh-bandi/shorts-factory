@@ -8,7 +8,7 @@
 <meta name="color-scheme" content="dark light">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <script src="theme.js?v=20261115-13"></script>
-    <link rel="stylesheet" href="style.css?v=20261116-1">
+    <link rel="stylesheet" href="style.css?v=20261117-1">
     <link rel="stylesheet" href="aesthetic.css?v=20261115-3">
     <link rel="stylesheet" href="vice.css?v=20261115-19">
 </head>
@@ -257,7 +257,11 @@
                 <div class="field" id="durationField"><label for="createDuration">Clip length</label><select id="createDuration"><option value="30">30 seconds</option><option value="45" selected>45 seconds</option><option value="60">60 seconds</option><option value="90">90 seconds</option></select></div>
                 <div class="field" id="layoutField"><label for="createMode">Short layout</label><select id="createMode"><option value="separate">Separate shorts</option><option value="multi_cut">One short · multiple cuts</option></select><p class="hint">Multi-cut asks the AI to turn several transcript moments into one story.</p></div>
                 <div class="field"><label for="createReframe">Reframe</label><select id="createReframe"><option value="crop">Center crop</option><option value="blur">Blurred backdrop</option></select></div>
-                <div class="publish-note"><span data-icon="info"></span><span>Renders stay local. Publish each Short from <strong>History</strong> with AI-written metadata.</span></div>
+                <div class="field field-switch" id="autoUploadField">
+                  <label class="switch"><input type="checkbox" id="createAutoUpload"><span class="sw"></span><span>Auto-upload after render</span></label>
+                  <p class="hint">Normal AI clips only — batch and manual cuts always stay local. The AI writes each title, description and tags before uploading to your connected channel.</p>
+                </div>
+                <div class="publish-note"><span data-icon="info"></span><span>Every render is saved in <strong>History</strong>. With auto-upload off, clips stay there under <strong>Not uploaded</strong> until you publish them.</span></div>
               </div>
 
               <div class="caption-studio">
@@ -579,6 +583,11 @@
                 <div class="field"><label for="resolution">Resolution</label><select id="resolution"><option value="1080">1080 × 1920</option><option value="720">720 × 1280</option></select></div>
               </div>
               <div class="field"><label for="quality">Quality</label><select id="quality"><option value="high">High (CRF 18)</option><option value="balanced">Balanced (CRF 21)</option><option value="small">Small file (CRF 25)</option></select></div>
+              <div class="field">
+                <label for="output_dir">Rendered clips folder</label>
+                <div class="path-picker"><input id="output_dir" type="text" placeholder="Default — this app's media folder" spellcheck="false" autocomplete="off"><button class="btn ghost sm" type="button" id="btnChooseOutput">Browse…</button></div>
+                <p class="hint">New renders are moved here with their thumbnails. Leave blank to keep them inside the app's data folder. Existing clips stay where they are.</p>
+              </div>
               <p class="mono-note">Frames are re-encoded at 30 fps. NVENC is used when GPU acceleration is enabled; otherwise libx264. Audio is AAC 160k.</p>
               <p class="mono-note">Caption style and animation live in <strong>Create → Render options → Caption studio</strong>.</p>
             </div>
@@ -673,6 +682,6 @@
 <div class="toasts" id="toasts" aria-live="polite"></div>
 <canvas id="confetti" aria-hidden="true"></canvas>
 
-<script src="app.js?v=20261116-1"></script>
+<script src="app.js?v=20261117-1"></script>
 </body>
 </html>

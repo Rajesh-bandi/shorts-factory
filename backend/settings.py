@@ -27,6 +27,7 @@ KEYS = [
     "reframe",
     "resolution",
     "quality",
+    "output_dir",
     "caption_align",
     # Caption styling
     "caption_preset",
