@@ -74,7 +74,7 @@ def check_for_update(
     machine: str | None = None,
 ):
     """Return serializable update metadata. Network failures are non-fatal."""
-    current = str(current_version or "1.0.0")
+    current = str(current_version or "1.1.0")
     repo = (repo or os.getenv("UPDATE_REPO") or DEFAULT_REPO).strip().strip("/")
     api = (api_url or os.getenv("UPDATE_API_URL") or "").strip()
     if not api:

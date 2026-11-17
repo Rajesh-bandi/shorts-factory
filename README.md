@@ -116,10 +116,11 @@ relaunches it; Windows downloads the setup executable, launches it and exits so
 the installer can finish. The button opens the release page if no installer is
 available for the current platform (for example, when running from source).
 
-To publish a new version, bump `package.json` and create a matching tag. The
-first release uses tag `v1` for package version `1.0.0`; `v1`, `v1.0` and
-`v1.0.0` normalize to the same version. Pushing the tag starts GitHub Actions
-for both platforms and publishes the installers and `SHA256SUMS.txt`.
+To publish a new version, bump `package.json` and create a matching tag (for
+example `v1.1.0` for package version `1.1.0`). Tags may omit trailing zeroes:
+`v1`, `v1.0` and `v1.0.0` normalize to the same version. Pushing the tag starts
+GitHub Actions for both platforms and publishes the installers and
+`SHA256SUMS.txt`.
 
 ## Features
 

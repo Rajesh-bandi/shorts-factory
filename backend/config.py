@@ -40,7 +40,7 @@ WORKER_POLL_SECONDS = float(os.getenv("WORKER_POLL_SECONDS", "1.0"))
 
 # Public GitHub Releases feed used by the in-app update toast. The desktop
 # shell passes its own packaged version in APP_VERSION.
-APP_VERSION = os.getenv("APP_VERSION", "1.0.0").strip() or "1.0.0"
+APP_VERSION = os.getenv("APP_VERSION", "1.1.0").strip() or "1.1.0"
 UPDATE_REPO = (os.getenv("UPDATE_REPO", "Rajesh-bandi/shorts-factory").strip().strip("/")
                or "Rajesh-bandi/shorts-factory")
 UPDATE_API_URL = os.getenv("UPDATE_API_URL", "").strip() or (
