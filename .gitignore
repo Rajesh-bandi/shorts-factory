@@ -5,6 +5,15 @@ data/
 !.env.example
 .freebuff/
 
+# Omniroute credential snapshots and databases (never commit)
+.omniroute/
+omniroute-snapshot/
+omniroute-snapshot.enc
+omniroute-sync-passphrase
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
 # Python
 .venv/
 __pycache__/

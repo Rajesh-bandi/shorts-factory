@@ -213,6 +213,8 @@ input[type="color"] { padding: 2px; width: 34px; height: 28px; cursor: pointer; 
 .pill { display: inline-flex; align-items: center; gap: 5px; font-size: 9.5px; text-transform: uppercase; letter-spacing: .1em; padding: 3px 7px; border-radius: 99px; border: 1px solid var(--line2); color: var(--dim); background: var(--bg2); }
 .pill.muted { color: var(--faint); }
 .pill.ok { color: var(--green); border-color: color-mix(in srgb, var(--green) 35%, transparent); background: color-mix(in srgb, var(--green) 10%, transparent); }
+.pill.warn { color: var(--yellow); border-color: color-mix(in srgb, var(--yellow) 35%, transparent); background: color-mix(in srgb, var(--yellow) 10%, transparent); }
+.pill.bad { color: var(--red); border-color: color-mix(in srgb, var(--red) 35%, transparent); background: color-mix(in srgb, var(--red) 10%, transparent); }
 .badge.soft { background: color-mix(in srgb, var(--accent) 12%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); color: var(--accent); font-weight: 700; font-size: 9px; text-transform: uppercase; letter-spacing: .12em; padding: 2px 7px; border-radius: 99px; }
 .card { background: linear-gradient(165deg, color-mix(in srgb, var(--panel) 97%, white 3%), var(--panel)); border: 1px solid var(--line); border-radius: var(--r); padding: var(--pad); box-shadow: inset 0 1px 0 color-mix(in srgb, var(--fg) 5%, transparent), 0 22px 44px -34px rgba(0,0,0,.65); }
 .spot { position: relative; overflow: hidden; }
@@ -466,6 +468,15 @@ td.title-cell { color: var(--fg); max-width: 420px; overflow: hidden; text-overf
 .test-result { font-size: 10.5px; color: var(--faint); }
 .test-result.ok { color: var(--green); }
 .test-result.bad { color: var(--red); }
+.sync-config { margin-top: 14px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--bg2); padding: 0 12px; }
+.sync-config summary { display: flex; align-items: center; gap: 7px; cursor: pointer; padding: 11px 0; color: var(--dim); font-size: 11px; font-weight: 700; list-style: none; }
+.sync-config summary::-webkit-details-marker { display: none; }
+.sync-config summary .ico { width: 13px; height: 13px; color: var(--accent); }
+.sync-config[open] { padding-bottom: 12px; }
+.sync-config[open] summary { border-bottom: 1px solid var(--line); margin-bottom: 12px; }
+.sync-config .field { margin-top: 10px; }
+.sync-config .row { margin-top: 0; }
+.sync-config .mono-note { margin-bottom: 0; }
 .save-bar { position: sticky; bottom: 16px; display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin-top: 20px; padding: 12px 16px; border: 1px solid var(--line); border-radius: var(--r); background: color-mix(in srgb, var(--panel) 92%, transparent); backdrop-filter: blur(12px); z-index: 5; }
 .save-msg { flex: 1; font-size: 10.5px; color: var(--faint); }
 .save-msg.ok { color: var(--green); }

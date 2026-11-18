@@ -23,8 +23,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import (
-    advisor, analytics, assistant, auth, config, db, downloader, gpu, pipeline,
-    qa, settings, storage, updates, uploader, worker,
+    advisor, analytics, assistant, auth, config, db, downloader, gpu,
+    omniroute_sync, pipeline, qa, settings, storage, updates, uploader, worker,
 )
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -39,7 +39,9 @@ async def lifespan(_app):
         owner = db.ensure_local_user(config.LOCAL_USER_EMAIL, config.LOCAL_USER_NAME)
         config.LOCAL_USER_ID = int(owner["id"])
     worker.start()
+    omniroute_sync.start()
     yield
+    omniroute_sync.stop()
     worker.stop()
 
 
@@ -277,10 +279,25 @@ def post_settings(payload: SettingsPayload, user: CurrentUser):
         except ValueError as e:
             raise HTTPException(400, str(e))
     settings.update(user["id"], payload.settings)
+    if config.LOCAL_MODE and any(k.startswith("omniroute_sync_") for k in payload.settings):
+        omniroute_sync.wake()
     return {
         "ok": True,
         "llm_available": settings.llm_available(user["id"]),
         "output_dir": settings.get(user["id"], "output_dir", "") or "",
+        "settings": settings.public(user["id"]),
+    }
+
+
+@app.post("/api/omniroute/sync")
+def omniroute_sync_now(user: CurrentUser):
+    if not config.LOCAL_MODE:
+        raise HTTPException(404, "Snapshot sync is only available in the local app")
+    result = omniroute_sync.check(user["id"])
+    return {
+        "ok": result.get("status") in ("staged", "current"),
+        "sync": result,
+        "settings": settings.public(user["id"]),
     }
 
 
@@ -1020,6 +1037,10 @@ def health(user: CurrentUser):
         {"name": "CUDA transcription", "ok": gpu.cuda_available(), "detail": gpu.cuda_summary()},
         {"name": "NVENC rendering", "ok": gpu.nvenc_available(),
          "detail": "h264_nvenc available" if gpu.nvenc_available() else "CPU x264 fallback"},
+        {"name": "Omniroute AI",
+         "ok": (not settings.omniroute_enabled(user["id"])) or settings.omniroute_online(),
+         "detail": (f"built-in on {config.OMNIROUTE_BASE_URL}" if settings.omniroute_enabled(user["id"])
+                    else "off — using custom provider settings")},
     ]
     directory = downloader.user_media_dir(user["id"])
     try:
@@ -1054,22 +1075,25 @@ def health(user: CurrentUser):
 def ai_test(user: CurrentUser):
     if not settings.llm_available(user["id"]):
         raise HTTPException(400, "Add a Base URL, API key and model first")
-    import requests
     cfg = settings.llm_config(user["id"])
+    if cfg.get("provider") == "omniroute" and not settings.omniroute_online():
+        raise HTTPException(503, "Built-in Omniroute is not reachable. Check the login snapshot and restart the app.")
+    import requests
     started = time.time()
     try:
         resp = requests.post(
             cfg["base_url"].rstrip("/") + "/chat/completions",
             headers={"Authorization": f"Bearer {cfg['api_key']}"},
             json={"model": cfg["model"], "messages": [{"role": "user", "content": "Reply with the single word: ready"}],
-                  "temperature": 0, "max_tokens": 16},
-            timeout=30,
+                  "temperature": 0, "max_tokens": 96},
+            timeout=120,
         )
         resp.raise_for_status()
-        reply = resp.json()["choices"][0]["message"]["content"].strip()
-        if str(reply).strip().strip("\"'!.").lower() != "ready":
-            raise HTTPException(400, f"AI endpoint returned a non-completion: {str(reply)[:200]}")
-        return {"ok": True, "model": cfg["model"], "reply": reply[:200],
+        data = resp.json()
+        reply = str((data.get("choices") or [{}])[0].get("message", {}).get("content") or "").strip()
+        if not reply:
+            raise HTTPException(400, "AI endpoint returned an empty completion")
+        return {"ok": True, "model": data.get("model") or cfg["model"], "reply": reply[:200],
                 "ms": int((time.time() - started) * 1000)}
     except HTTPException:
         raise

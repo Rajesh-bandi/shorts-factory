@@ -1,6 +1,6 @@
 {
   "name": "shorts-factory",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Turn long YouTube videos into vertical Shorts — local desktop studio.",
   "author": "Shorts Factory",
   "repository": {
@@ -15,6 +15,9 @@
     "start": "electron .",
     "backend:dev": "bash -c 'if [ -x .venv/bin/python ]; then .venv/bin/python -m uvicorn backend.main:app --host 127.0.0.1 --port 8787; else python3 -m uvicorn backend.main:app --host 127.0.0.1 --port 8787; fi'",
     "prepare:desktop": "node scripts/build-desktop.js",
+    "prepare:omniroute": "node scripts/build-omniroute.js",
+    "omniroute:snapshot": "node scripts/omniroute-snapshot.js",
+    "omniroute:publish": "node scripts/omniroute-publish.js",
     "dist": "npm run prepare:desktop && electron-builder --linux AppImage --publish never",
     "dist:dir": "npm run prepare:desktop && electron-builder --dir --publish never",
     "dist:win": "npm run prepare:desktop && electron-builder --win nsis --publish never",
@@ -41,6 +44,10 @@
       {
         "from": "build/bin",
         "to": "bin"
+      },
+      {
+        "from": "build/omniroute-runtime",
+        "to": "omniroute-runtime"
       }
     ],
     "linux": {

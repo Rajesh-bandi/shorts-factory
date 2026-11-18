@@ -8,7 +8,7 @@
 <meta name="color-scheme" content="dark light">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <script src="theme.js?v=20261115-13"></script>
-    <link rel="stylesheet" href="style.css?v=20261117-1">
+    <link rel="stylesheet" href="style.css?v=20261118-2">
     <link rel="stylesheet" href="aesthetic.css?v=20261115-3">
     <link rel="stylesheet" href="vice.css?v=20261115-19">
 </head>
@@ -552,18 +552,40 @@
         <div class="tab-panel" id="tab-ai">
           <div class="card">
             <div class="card-head">
-              <div><div class="eyebrow">optional</div><h3>AI provider</h3></div>
-              <span class="pill muted" id="aiPill">rules mode</span>
+              <div><div class="eyebrow">default</div><h3>AI inference</h3></div>
+              <span class="pill muted" id="aiPill">starting</span>
             </div>
-            <p class="sub tight">Any OpenAI-compatible endpoint works: OpenAI, OpenRouter, Ollama, LM Studio. This workspace uses its own key and URL. Without it, highlights come from transcript heuristics.</p>
-            <div class="row">
-              <div class="field"><label for="llm_base_url">Base URL</label><input id="llm_base_url" type="text" placeholder="https://api.openai.com/v1" spellcheck="false"></div>
-              <div class="field"><label for="llm_model">Model</label><input id="llm_model" type="text" placeholder="gpt-4o-mini" spellcheck="false"></div>
+            <p class="sub tight">Shorts Factory includes its own Omniroute runtime, starts it with the app, and uses your existing Omniroute logins. No API key, Node.js install or provider setup is needed.</p>
+            <div class="field">
+              <label class="switch"><input id="omniroute_enabled" type="checkbox" checked><span class="sw"></span><span>Use built-in Omniroute AI</span></label>
+              <p class="hint" id="omnirouteHint">Default on. Runs on 127.0.0.1:20129 and overrides the custom provider below.</p>
             </div>
-            <div class="field"><label for="llm_api_key">API key <span class="saved-tag" id="llmKeySaved" hidden>saved</span></label><input id="llm_api_key" type="password" placeholder="sk-…" spellcheck="false" autocomplete="new-password"><p class="hint">Stored locally; sent only to the base URL above.</p></div>
             <div class="test-row">
-              <button class="btn" id="btnTestAI"><span data-icon="bolt"></span>Test connection</button>
+              <button class="btn" id="btnTestAI"><span data-icon="bolt"></span>Test AI connection</button>
               <span class="test-result" id="aiTestResult"></span>
+            </div>
+            <details class="sync-config" id="omnirouteSyncConfig" hidden>
+              <summary><span data-icon="download"></span> Snapshot sync for friends</summary>
+              <p class="hint">Pull the owner's encrypted Omniroute login snapshot from a private GitHub repo. A new snapshot is staged and applied the next time Shorts Factory starts.</p>
+              <label class="switch"><input id="omniroute_sync_enabled" type="checkbox"><span class="sw"></span><span>Keep this device in sync</span></label>
+              <div class="field"><label for="omniroute_sync_repo">Private repo</label><input id="omniroute_sync_repo" type="text" placeholder="owner/shorts-factory-omniroute" spellcheck="false" autocomplete="off"></div>
+              <div class="row">
+                <div class="field"><label for="omniroute_sync_token">GitHub read-only token <span class="saved-tag" id="omnirouteSyncTokenSaved" hidden>saved</span></label><input id="omniroute_sync_token" type="password" placeholder="github_pat_…" spellcheck="false" autocomplete="new-password"><p class="hint">Fine-grained token, Contents: Read-only, limited to this repo.</p></div>
+                <div class="field"><label for="omniroute_sync_passphrase">Snapshot passphrase <span class="saved-tag" id="omnirouteSyncPassSaved" hidden>saved</span></label><input id="omniroute_sync_passphrase" type="password" placeholder="••••••••" spellcheck="false" autocomplete="new-password"><p class="hint">The passphrase the owner shared privately.</p></div>
+              </div>
+              <div class="test-row">
+                <button class="btn ghost sm" id="btnOmnirouteSync"><span data-icon="refresh"></span>Check now</button>
+                <span class="test-result" id="omnirouteSyncStatus"></span>
+              </div>
+              <p class="mono-note">The downloaded bundle is encrypted. The GitHub token and passphrase are stored in this app's encrypted settings, never in the public repository.</p>
+            </details>
+            <div id="manualAIConfig" hidden>
+              <p class="mono-note">Custom provider — used only while built-in Omniroute is turned off.</p>
+              <div class="row">
+                <div class="field"><label for="llm_base_url">Base URL</label><input id="llm_base_url" type="text" placeholder="https://api.openai.com/v1" spellcheck="false"></div>
+                <div class="field"><label for="llm_model">Model</label><input id="llm_model" type="text" placeholder="gpt-4o-mini" spellcheck="false"></div>
+              </div>
+              <div class="field"><label for="llm_api_key">API key <span class="saved-tag" id="llmKeySaved" hidden>saved</span></label><input id="llm_api_key" type="password" placeholder="sk-…" spellcheck="false" autocomplete="new-password"><p class="hint">Stored locally; sent only to the base URL above.</p></div>
             </div>
           </div>
         </div>
@@ -682,6 +704,6 @@
 <div class="toasts" id="toasts" aria-live="polite"></div>
 <canvas id="confetti" aria-hidden="true"></canvas>
 
-<script src="app.js?v=20261117-1"></script>
+<script src="app.js?v=20261118-2"></script>
 </body>
 </html>

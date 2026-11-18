@@ -22,7 +22,7 @@ jobs:
   build-linux:
     name: Linux AppImage
     runs-on: ubuntu-22.04
-    timeout-minutes: 45
+    timeout-minutes: 90
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -36,7 +36,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: "24"
           cache: npm
       - name: Install Python dependencies
         run: |
@@ -59,7 +59,7 @@ jobs:
   build-windows:
     name: Windows installer
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 90
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -73,7 +73,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: "24"
           cache: npm
       - name: Install Python dependencies
         run: |

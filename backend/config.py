@@ -33,6 +33,12 @@ MAX_USERS = int(os.getenv("MAX_USERS", "4"))
 # APP_BASE_URL so an existing OAuth redirect can be preserved if needed.
 PORT = int(os.getenv("PORT", "8787"))
 
+# Built-in Omniroute inference. The desktop shell starts its own instance on a
+# dedicated loopback port so it does not collide with the user's Omniroute
+# dashboard on 20128.
+OMNIROUTE_BASE_URL = os.getenv("OMNIROUTE_BASE_URL", "http://127.0.0.1:20129/v1").rstrip("/")
+OMNIROUTE_MODEL = os.getenv("OMNIROUTE_MODEL", "auto/best-chat").strip() or "auto/best-chat"
+
 APP_SECRET_KEY = os.getenv("APP_SECRET_KEY", "").strip()
 SERVE_FRONTEND = os.getenv("SERVE_FRONTEND", "true").lower() in ("1", "true", "yes", "on")
 WORKER_CONCURRENCY = max(1, min(4, int(os.getenv("WORKER_CONCURRENCY", "2"))))

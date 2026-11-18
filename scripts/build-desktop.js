@@ -151,6 +151,7 @@ async function main() {
   copyBinary(require("ffmpeg-static"), path.join(bin, isWindows ? "ffmpeg.exe" : "ffmpeg"));
   copyBinary(require("ffprobe-static").path, path.join(bin, isWindows ? "ffprobe.exe" : "ffprobe"));
   await ytdlp();
+  run(process.execPath, [path.join(__dirname, "build-omniroute.js")]);
   console.log("[build] desktop runtime is ready");
 }
 
