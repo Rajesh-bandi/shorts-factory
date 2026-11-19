@@ -577,7 +577,7 @@
     return `<div class="stages">${names.map((n, i) => `<span class="stage-step${i < cur ? " done" : i === cur ? " active" : ""}">${i < cur ? icon("check") : ""}${n}</span>`).join("")}</div>`;
   }
   function editSignature(candidates) {
-    return JSON.stringify((candidates || []).map((c) => [Number(c.start), Number(c.end), String(c.title || ""), Array.isArray(c.cuts) ? c.cuts.map((cut) => [Number(cut.start), Number(cut.end)]) : null]));
+    return JSON.stringify((candidates || []).map((c) => [Number(c.start), Number(c.end), String(c.title || ""), Array.isArray(c.cuts) ? c.cuts.map((cut) => [Number(cut.start), Number(cut.end)]) : null, Array.isArray(c.hooks) ? c.hooks : []]));
   }
   function editDuration(ed) {
     if (ed && Array.isArray(ed.cuts) && ed.cuts.length > 1) {
@@ -592,13 +592,19 @@
     const candidates = j.candidates || [];
     const sig = editSignature(candidates);
     if (!state.edit[j.id] || state.edit[j.id].length !== candidates.length || state.editSig[j.id] !== sig) {
-      state.edit[j.id] = candidates.map((c) => ({
-        start: Number(c.start),
-        end: Number(c.end),
-        title: c.title || "Highlight",
-        cuts: Array.isArray(c.cuts) ? c.cuts.map((cut) => ({ start: Number(cut.start), end: Number(cut.end) })) : null,
-        picked: true
-      }));
+      const hookMode = jobOpt(j, "hook_mode", "auto");
+      state.edit[j.id] = candidates.map((c) => {
+        const hooks = Array.isArray(c.hooks) ? c.hooks.map((hook) => String(hook || "")).filter(Boolean) : [];
+        return {
+          start: Number(c.start),
+          end: Number(c.end),
+          title: c.title || "Highlight",
+          cuts: Array.isArray(c.cuts) ? c.cuts.map((cut) => ({ start: Number(cut.start), end: Number(cut.end) })) : null,
+          hooks,
+          hook: c.hook != null ? String(c.hook) : (hookMode === "auto" ? (hooks[0] || "") : ""),
+          picked: true
+        };
+      });
       state.editSig[j.id] = sig;
       return true;
     }
@@ -610,14 +616,20 @@
     const caption = jobOpt(j, "caption_preset", "gruvbox");
     const animation = jobOpt(j, "caption_animation", "static");
     const reframe = jobOpt(j, "reframe", "crop");
+    const hookMode = jobOpt(j, "hook_mode", "auto");
     const rows = j.candidates.map((c, i) => {
       const ed = state.edit[j.id][i];
       const dur = editDuration(ed);
+      const hooks = Array.isArray(ed.hooks) ? ed.hooks : [];
+      const hookOptions = hooks.length
+        ? `<select class="cand-hook-select" data-field="hook" aria-label="Hook line"><option value="">No hook line</option>${hooks.map((hook) => `<option value="${esc(hook)}"${hook === ed.hook ? " selected" : ""}>${esc(hook)}</option>`).join("")}</select>`
+        : hookMode === "none" ? "" : `<span class="cand-hook-hint">${icon("wand")} AI hook line will be added at render</span>`;
       return `<div class="cand${ed.picked === false ? " off" : ""}" data-job="${j.id}" data-idx="${i}">
         <input type="checkbox" class="cand-pick"${ed.picked === false ? "" : " checked"} title="Include this clip">
         <div class="cand-body">
           <input class="cand-title" data-field="title" value="${esc(ed.title)}" aria-label="Clip title">
           <div class="cand-reason">${esc(c.reason || "Highlight")}${Array.isArray(c.cuts) && c.cuts.length ? ` · ${c.cuts.length} cuts · ${Math.round(dur)}s combined` : ""}</div>
+          ${hookOptions ? `<div class="cand-hook"><span class="cand-hook-label">Hook</span>${hookOptions}</div>` : ""}
         </div>
         <div class="time-field"><label>in</label><input type="number" step="0.1" min="0" data-field="start" value="${Number(ed.start).toFixed(1)}"></div>
         <div class="time-field"><label>out</label><input type="number" step="0.1" min="0" data-field="end" value="${Number(ed.end).toFixed(1)}"></div>
@@ -900,7 +912,7 @@
       return;
     }
     if (act === "preview") return openPreview(id, Number(btn.dataset.idx));
-    if (act === "play") return btn.dataset.clip ? openStoredClip(btn.dataset.clip, btn.dataset.title || "Rendered clip") : openClip(btn.dataset.file);
+    if (act === "play") return btn.dataset.clip ? openHistoryClip(Number(btn.dataset.clip)) : openClip(btn.dataset.file);
     if (act === "hooklab") return openHookLab(id, Number(btn.dataset.idx));
     if (act === "captions") return openCaptionEditor(id, Number(btn.dataset.idx));
     if (act === "upload") return openUploadModal(Number(btn.dataset.clip));
@@ -953,8 +965,8 @@
     if (pick) { ed.picked = pick.checked; row.classList.toggle("off", !pick.checked); return; }
     const field = e.target.dataset.field;
     if (!field) return;
-    ed[field] = field === "title" ? e.target.value : Number(e.target.value);
-    if (field !== "title") updateDur(row);
+    ed[field] = field === "title" || field === "hook" ? e.target.value : Number(e.target.value);
+    if (field !== "title" && field !== "hook") updateDur(row);
   }
   function updateDur(row) {
     const id = Number(row.dataset.job), idx = Number(row.dataset.idx);
@@ -983,11 +995,15 @@
       const start = Number(row.querySelector('[data-field="start"]').value);
       const end = Number(row.querySelector('[data-field="end"]').value);
       const title = row.querySelector('[data-field="title"]').value.trim();
+      const hookEl = row.querySelector('[data-field="hook"]');
       const dur = ed ? editDuration(ed) : end - start;
       const max = isMultiCut(ed) ? 180 : 120;
       const cutsValid = !isMultiCut(ed) || ed.cuts.every((cut) => Number(cut.end) > Number(cut.start) + 1);
       if (!(end > start + 1) || !cutsValid || dur <= 1 || dur > max) { row.classList.add("bad"); bad = true; return; }
-      clips.push({ index: idx, start, end, title: title || `Highlight ${idx + 1}` });
+      const clip = { index: idx, start, end, title: title || `Highlight ${idx + 1}` };
+      if (hookEl) clip.hook = hookEl.value;
+      else if (ed?.hook) clip.hook = ed.hook;
+      clips.push(clip);
     });
     if (bad) return toast("Check the in/out points — separate clips must be 2–120s; combined multi-cuts can be up to 180s", "err");
     if (!clips.length) return toast("Select at least one moment", "warn");
@@ -1030,6 +1046,8 @@
     if ($("#durationField")) $("#durationField").hidden = manual;
     if ($("#layoutField")) $("#layoutField").hidden = manual;
     if ($("#autoUploadField")) $("#autoUploadField").hidden = manual || batch;
+    if ($("#hookField")) $("#hookField").hidden = manual;
+    if ($("#chatSpikesField")) $("#chatSpikesField").hidden = manual;
     if ($("#createFlow")) $("#createFlow").hidden = manual;
     if ($("#createActive")) $("#createActive").hidden = manual;
     if ($("#manualPanel")) $("#manualPanel").hidden = !manual;
@@ -1053,6 +1071,8 @@
         privacy: $("#createPrivacy").value,
         clip_duration: Number($("#createDuration").value) || 45,
         clip_mode: $("#createMode").value,
+        hook_mode: $("#createHookMode")?.value || "auto",
+        chat_highlights: !!$("#createChatSpikes")?.checked,
         reframe: $("#createReframe").value,
         ...captionOptions()
       }) });
@@ -1090,6 +1110,8 @@
         privacy: $("#createPrivacy").value,
         clip_duration: Number($("#createDuration").value) || 45,
         clip_mode: $("#createMode").value,
+        hook_mode: $("#createHookMode")?.value || "auto",
+        chat_highlights: !!$("#createChatSpikes")?.checked,
         reframe: $("#createReframe").value,
         auto_upload: state.createMode === "auto" && !!$("#createAutoUpload")?.checked,
         ...captionOptions()
@@ -1305,16 +1327,40 @@
     }).join("");
   }
 
-  function openHistoryClip(id) {
-    const clip = state.history.find((c) => c.id === id);
+  async function openHistoryClip(id) {
+    let clip = state.history.find((c) => c.id === id);
+    if (!clip) {
+      try { clip = await api(`/clips/${id}`); } catch (e) { return toast(e.message, "err"); }
+    }
     if (!clip) return;
-    if (!clip.exists || !clip.file) return toast("This clip's local file is missing", "warn");
+    const clipPath = clip.path || "";
     showModal({
-      title: clip.title,
+      title: "Clip details",
       wide: true,
-      body: `<video class="clip-video" controls autoplay playsinline src="/api/clips/${clip.id}/file?v=${Date.now()}"></video>
-        <p class="hint" style="margin-top:8px">${timeLabel(clip.duration)} · ${clip.uploaded ? "Published to YouTube" : "Saved locally"} · job #${clip.job_id} · QA ${esc(clip.qa_status || "pending")}</p>
-        ${clip.url ? `<p class="hint"><a href="${esc(clip.url)}" target="_blank" rel="noopener">Open on YouTube ↗</a></p>` : ""}`,
+      body: `<div class="history-detail">
+        ${clip.exists ? `<video class="clip-video" controls autoplay playsinline src="/api/clips/${clip.id}/file?v=${Date.now()}"></video>` : `<div class="publish-note"><span data-icon="alert"></span><span>This clip's local file is missing. Metadata and path are still available below.</span></div>`}
+        <p class="hint">${esc(clip.title)} · ${timeLabel(clip.duration)} · ${clip.uploaded ? "Published to YouTube" : "Saved locally"} · job #${clip.job_id} · QA ${esc(clip.qa_status || "pending")}</p>
+        <div class="field">
+          <div class="field-head"><label for="historyTitle">AI title</label><button class="btn ghost sm" type="button" data-copy-field="#historyTitle">${icon("copy")}Copy</button></div>
+          <input id="historyTitle" type="text" maxlength="100" value="${esc(clip.title || "")}">
+          <div id="historyTitleOptions" class="hook-list" style="margin-top:8px"></div>
+        </div>
+        <div class="field">
+          <div class="field-head"><label for="historyDescription">AI description</label><button class="btn ghost sm" type="button" data-copy-field="#historyDescription">${icon("copy")}Copy</button></div>
+          <textarea id="historyDescription" rows="6">${esc(clip.description || "")}</textarea>
+        </div>
+        <div class="field">
+          <div class="field-head"><label for="historyTags">AI tags</label><button class="btn ghost sm" type="button" data-copy-field="#historyTags">${icon("copy")}Copy</button></div>
+          <input id="historyTags" type="text" value="" placeholder="AI tags appear here">
+        </div>
+        <div class="field">
+          <div class="field-head"><label for="historyPath">Video path</label><button class="btn ghost sm" type="button" data-copy-field="#historyPath"${clipPath ? "" : " disabled"}>${icon("copy")}Copy path</button></div>
+          <div class="copy-row"><input id="historyPath" type="text" readonly value="${esc(clipPath)}" placeholder="Path unavailable"></div>
+          <p class="hint">Use this path to upload the MP4 yourself if you prefer not to publish from the app.</p>
+        </div>
+        <p class="hint" id="historyAiStatus">Writing AI title options, description and tags…</p>
+        ${clip.url ? `<p class="hint"><a href="${esc(clip.url)}" target="_blank" rel="noopener">Open on YouTube ↗</a></p>` : ""}
+      </div>`,
       foot: `${clip.uploaded ? `<button class="btn ghost danger-text" id="btnDeleteYt">${icon("trash")}Remove from YouTube</button>` : `<button class="btn primary" id="btnUploadFromView">${icon("youtube")}Upload with AI</button>`}<a class="btn ghost" href="/api/clips/${clip.id}/export">${icon("download")}Download MP4</a>`
     });
     if ($("#btnUploadFromView")) $("#btnUploadFromView").onclick = () => { closeModal(); openUploadModal(clip.id); };
@@ -1325,6 +1371,37 @@
         closeModal(); toast("Removed from YouTube", "warn"); loadHistory();
       } catch (e) { toast(e.message, "err"); }
     };
+    try {
+      const meta = await api(`/clips/${clip.id}/metadata`);
+      const status = $("#historyAiStatus");
+      const titleInput = $("#historyTitle");
+      const descInput = $("#historyDescription");
+      const tagsInput = $("#historyTags");
+      const options = $("#historyTitleOptions");
+      const titles = Array.isArray(meta.titles) ? meta.titles.filter(Boolean) : [];
+      if (titles.length && titleInput && !titleInput.dataset.touched) titleInput.value = titles[0];
+      if (options && titles.length) {
+        options.innerHTML = titles.map((title) => `<button type="button" class="hook-option" data-history-title="${esc(title)}">${esc(title)}</button>`).join("");
+        options.querySelectorAll("[data-history-title]").forEach((btn) => {
+          btn.onclick = () => {
+            if (!titleInput) return;
+            titleInput.value = btn.dataset.historyTitle;
+            titleInput.dataset.touched = "1";
+            copy(btn.dataset.historyTitle);
+          };
+        });
+      }
+      if (meta.description && descInput && !descInput.dataset.touched) descInput.value = meta.description;
+      if (tagsInput && Array.isArray(meta.tags)) tagsInput.value = meta.tags.join(", ");
+      if (status) status.textContent = meta.source === "fallback" ? "AI was unavailable — using a local title, description and tags. Edit or copy them below." : "AI wrote these title options, description and tags. Choose a title, then copy what you need.";
+    } catch (e) {
+      const status = $("#historyAiStatus");
+      if (status) status.textContent = `Could not write AI metadata: ${e.message}. Edit the fields below and copy manually.`;
+    }
+    const titleInput = $("#historyTitle");
+    const descInput = $("#historyDescription");
+    if (titleInput) titleInput.addEventListener("input", () => { titleInput.dataset.touched = "1"; });
+    if (descInput) descInput.addEventListener("input", () => { descInput.dataset.touched = "1"; });
   }
 
   async function openUploadModal(id) {
@@ -1562,7 +1639,7 @@
     terminal: { label: "Terminal", blurb: "green bar", size: 40, color: "#b8bb26", highlight: "#fabd2f", outline: 0, shadow: 0, uppercase: true, box: true, bold: true, animation: "static" }
   };
   const SETTING_IDS = ["yt_client_id", "yt_client_secret", "default_privacy", "upload_tags", "category_id",
-    "llm_base_url", "llm_api_key", "llm_model", "whisper_model", "gpu_enabled", "short_length", "clip_mode", "clip_duration",
+    "llm_base_url", "llm_api_key", "llm_model", "whisper_model", "gpu_enabled", "chat_highlights", "short_length", "clip_mode", "clip_duration", "hook_mode",
     "reframe", "resolution", "quality", "caption_preset", "caption_size", "caption_position",
     "caption_color", "caption_highlight", "caption_animation", "caption_uppercase", "caption_box", "output_dir"];
 
@@ -1600,7 +1677,9 @@
     set("#createPrivacy", s.default_privacy || "public");
     set("#createDuration", s.clip_duration || s.short_length || 45);
     set("#createMode", s.clip_mode || "separate");
+    set("#createHookMode", s.hook_mode || "auto");
     set("#createReframe", s.reframe || "crop");
+    if ($("#createChatSpikes")) $("#createChatSpikes").checked = s.chat_highlights === undefined ? true : truthy(s.chat_highlights);
     const preset = CAPTION_STYLES[s.caption_preset] ? s.caption_preset : "gruvbox";
     set("#caption_preset", preset);
     set("#caption_size", s.caption_size || CAPTION_STYLES[preset].size);
@@ -2264,6 +2343,8 @@
       const g = e.target.closest("[data-go]");
       if (g) { go(g.dataset.go); if (g.dataset.tabTarget) switchTab(g.dataset.tabTarget); return; }
       if (e.target.closest("[data-tweaks]")) return openTweaks();
+      const cf = e.target.closest("[data-copy-field]");
+      if (cf) { const el = $(cf.dataset.copyField); if (el) copy(el.value); return; }
       const c = e.target.closest("[data-copy]");
       if (c) { copy(c.dataset.copy); return; }
       const oj = e.target.closest("[data-open-job]");

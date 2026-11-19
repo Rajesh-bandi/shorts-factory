@@ -113,6 +113,67 @@ def suggest_metadata(user_id, job, clip, platform="youtube"):
         return fallback
 
 
+def _fallback_hooks(candidate):
+    title = " ".join(str((candidate or {}).get("title") or "Watch this").split())
+    title = title[:58].rstrip(" .,;:!-")
+    if not title:
+        title = "Watch this"
+    return [f"🔥 {title}", f"😳 {title}", f"⚡ {title}"]
+
+
+def _has_emoji(text):
+    return any(0x2600 <= ord(ch) <= 0x27BF or ord(ch) >= 0x1F000 for ch in str(text or ""))
+
+
+def suggest_hooks(user_id, job, candidate):
+    """Three short on-screen hook lines for the top of a Short."""
+    candidate = candidate or {}
+    fallback = _fallback_hooks(candidate)
+    cfg = _config(user_id)
+    if not cfg:
+        return {"hooks": fallback, "source": "fallback"}
+    title = str((candidate or {}).get("title") or "Short")
+    reason = str((candidate or {}).get("reason") or "")
+    transcript = str((candidate or {}).get("transcript") or "")[:1800]
+    prompt = (
+        "Write 3 hook lines for a vertical YouTube Short. The chosen line is burned in at the "
+        "top of the video and stays on screen for the entire clip.\n"
+        f"Source video: {job.get('title') or job.get('url') or 'video'}\n"
+        f"Moment title: {title}\n"
+        f"Why this moment: {reason}\n"
+        f"Transcript around the moment:\n{transcript}\n\n"
+        "Rules:\n"
+        "- Exactly 3 options, each under 55 characters.\n"
+        "- Each option must include 1 or 2 relevant emoji.\n"
+        "- Make them curiosity-driven and specific to this moment; no hashtags, quotes, or generic filler.\n"
+        "- They must make sense on their own at the top of the screen.\n"
+        'Return JSON only: {"hooks": ["first", "second", "third"]}'
+    )
+    try:
+        data = _json_object(_chat(cfg, prompt, timeout=60))
+        hooks = []
+        for raw in (data or {}).get("hooks") or []:
+            line = " ".join(str(raw or "").split()).strip().strip('"').strip("'")
+            line = " ".join(word for word in line.split() if not word.startswith("#"))
+            if not line:
+                continue
+            if not _has_emoji(line):
+                line = "🔥 " + line
+            line = line[:80].rstrip(" .,;:!-")
+            if line and line.lower() not in {h.lower() for h in hooks}:
+                hooks.append(line)
+        for line in fallback:
+            if len(hooks) >= 3:
+                break
+            if line.lower() not in {h.lower() for h in hooks}:
+                hooks.append(line)
+        if hooks:
+            return {"hooks": hooks[:3], "source": "llm"}
+    except Exception:
+        pass
+    return {"hooks": fallback, "source": "fallback"}
+
+
 def hook_lab(user_id, job, candidate):
     """Three title/openings for a review candidate before rendering."""
     base = {

@@ -127,6 +127,14 @@ def _run_video_encode(cmd, crf, use_gpu, should_cancel=None):
 RESOLUTIONS = {"1080": (1080, 1920), "720": (720, 1280)}
 
 
+def _subtitles_filter(ass_path):
+    value = f"subtitles=filename='{_ff_escape(ass_path)}'"
+    fontsdir = _hook_fontsdir()
+    if fontsdir:
+        value += f":fontsdir='{_ff_escape(fontsdir)}'"
+    return value
+
+
 def _ff_escape(text):
     return (
         text.replace("\\", "\\\\")
@@ -320,6 +328,45 @@ def _ass_override(hex_color):
     return "\\c&H" + color[4:] + "&"
 
 
+_HOOK_FONT_DIR = os.path.join(os.path.dirname(__file__), "assets", "fonts")
+_HOOK_FONT_FILE = os.path.join(_HOOK_FONT_DIR, "NotoEmoji-Regular.ttf")
+
+
+def _hook_font():
+    """Use the bundled monochrome emoji font so hooks render on every platform."""
+    if os.path.isfile(_HOOK_FONT_FILE):
+        return "Noto Emoji"
+    try:
+        families = subprocess.check_output(
+            ["fc-list", ":family"], text=True, stderr=subprocess.DEVNULL, timeout=2
+        )
+        lowered = families.lower()
+        for family in ("Noto Emoji", "Noto Color Emoji", "Segoe UI Emoji", "Apple Color Emoji"):
+            if family.lower() in lowered:
+                return family
+    except (OSError, subprocess.SubprocessError, ValueError):
+        pass
+    return _caption_font()
+
+
+def _hook_fontsdir():
+    return _HOOK_FONT_DIR if os.path.isfile(_HOOK_FONT_FILE) else ""
+
+
+def _hook_size(opts):
+    preset = CAPTION_PRESETS.get(opts.get("caption_preset"), CAPTION_PRESETS["gruvbox"])
+    base = int(opts.get("caption_size") or preset["size"])
+    return max(44, min(76, base + 12))
+
+
+def _hook_style_line(opts):
+    size = _hook_size(opts)
+    return (
+        f"Style: Hook,{_caption_font()},{size},&H00FFFFFF,&H00FFFFFF,"
+        f"&H00101010,&H90000000,-1,0,0,0,100,100,0,0,1,4,2,8,50,50,70,1"
+    )
+
+
 def _ass_word_pieces(group, active, wrap_width, highlight, normal, uppercase):
     """Build one full caption group with the active word growing in place."""
     pieces = []
@@ -352,9 +399,24 @@ def _ass_escape_text(text):
     return text.replace("\\", "\\\\").replace("{", "(").replace("}", ")").replace("\n", "\\N")
 
 
+def _hook_ass_text(text, emoji_font):
+    """Keep Latin in the caption font and switch only emoji runs to the emoji font."""
+    pattern = re.compile(r"([\U0001F000-\U0001FAFF\u2600-\u27BF\uFE0F\u200D]+)")
+    parts = []
+    for part in pattern.split(str(text or "")):
+        if not part:
+            continue
+        if pattern.fullmatch(part):
+            parts.append(f"{{\\fn{emoji_font}}}{_ass_escape_text(part)}{{\\fn{_caption_font()}}}")
+        else:
+            parts.append(_ass_escape_text(part))
+    return "".join(parts)
+
+
 def _build_ass(segments, offset, duration, path, style_line, width, height,
                uppercase=False, wrap_width=26, animation="static",
-               primary_color="#ffffff", highlight_color="#fabd2f"):
+               primary_color="#ffffff", highlight_color="#fabd2f",
+               hook=None, hook_style_line=None, hook_size=58):
     """Write clip-local ASS captions from short, timed word groups."""
     lines = [
         "[Script Info]",
@@ -367,12 +429,27 @@ def _build_ass(segments, offset, duration, path, style_line, width, height,
         "[V4+ Styles]",
         "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
         style_line,
+    ]
+    hook = " ".join(str(hook or "").split())[:100]
+    if hook and hook_style_line:
+        lines.append(hook_style_line)
+    lines.extend([
         "",
         "[Events]",
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
-    ]
+    ])
+    hook_line = ""
+    if hook:
+        hook_wrap = max(14, int((width - 140) / (max(1, hook_size) * 0.72)))
+        emoji_font = _hook_font()
+        hook_body = "\\N".join(
+            _hook_ass_text(line, emoji_font) for line in _wrap_lines(hook, hook_wrap)
+        )
+        hook_line = f"Dialogue: 1,0:00:00.00,{_ass_time(duration)},Hook,,0,0,0,,{hook_body}"
     words = _clip_words(_word_timeline(segments), offset, duration)
     if not words:
+        if hook_line:
+            lines.append(hook_line)
         with open(path, "w") as f:
             f.write("\n".join(lines) + "\n")
         return
@@ -401,6 +478,8 @@ def _build_ass(segments, offset, duration, path, style_line, width, height,
                 lines.append(
                     f"Dialogue: 0,{_ass_time(start)},{_ass_time(end)},Default,,0,0,0,,{body}"
                 )
+        if hook_line:
+            lines.append(hook_line)
         with open(path, "w") as f:
             f.write("\n".join(lines) + "\n")
         return
@@ -410,6 +489,8 @@ def _build_ass(segments, offset, duration, path, style_line, width, height,
         if animation == "pop":
             body = pop + body
         lines.append(f"Dialogue: 0,{_ass_time(start)},{_ass_time(end)},Default,,0,0,0,,{body}")
+    if hook_line:
+        lines.append(hook_line)
     with open(path, "w") as f:
         f.write("\n".join(lines) + "\n")
 
@@ -665,6 +746,7 @@ def render_sections(sections, cand, index, job_id, segments, stage_cb, options=N
             "end": duration,
             "title": cand.get("title") or "Short",
             "reason": cand.get("reason") or "",
+            "hook": cand.get("hook") or "",
         }
         shifted = _shift_segments(segments, float(section["start"]), duration)
         return make_clip(
@@ -685,6 +767,7 @@ def render_sections(sections, cand, index, job_id, segments, stage_cb, options=N
                 "end": duration,
                 "title": f"{cand.get('title') or 'Short'} · cut {n + 1}",
                 "reason": cand.get("reason") or "",
+                "hook": cand.get("hook") or "",
             }
             shifted = _shift_segments(segments, float(section["start"]), duration)
             result = make_clip(
@@ -746,15 +829,17 @@ def make_clip(video_path, cand, index, job_id, segments, stage_cb, options=None,
         animation = "static"
 
     has_subs = False
+    hook_text = " ".join(str(cand.get("hook") or "").split())[:100]
     caption_segments = segments or []
     if not bool(opts.get("caption_align", True)):
         # Disable word-level timing and let the burner distribute words across
         # each transcript segment instead.
         caption_segments = [{k: v for k, v in seg.items() if k != "words"} for seg in caption_segments]
-    if caption_segments:
+    if caption_segments or hook_text:
         _build_ass(
             caption_segments, start, dur, ass_path, _ass_style_line(opts), width, height,
             uppercase, wrap_width, animation, primary_color, highlight_color,
+            hook=hook_text, hook_style_line=_hook_style_line(opts), hook_size=_hook_size(opts),
         )
         has_subs = os.path.exists(ass_path) and os.path.getsize(ass_path) > 0
 
@@ -769,7 +854,7 @@ def make_clip(video_path, cand, index, job_id, segments, stage_cb, options=None,
             f"[bg][fg]overlay=(W-w)/2:(H-h)/2[base]"
         )
         if has_subs:
-            chain += f";[base]subtitles=filename='{_ff_escape(ass_path)}'[v]"
+            chain += f";[base]{_subtitles_filter(ass_path)}[v]"
         else:
             chain += ";[base]null[v]"
         video_args = ["-filter_complex", chain, "-map", "[v]", "-map", "0:a?"]
@@ -779,7 +864,7 @@ def make_clip(video_path, cand, index, job_id, segments, stage_cb, options=None,
             f"crop={width}:{height},fps={fps}"
         )
         if has_subs:
-            chain += f",subtitles=filename='{_ff_escape(ass_path)}'"
+            chain += f",{_subtitles_filter(ass_path)}"
         video_args = ["-vf", chain, "-map", "0:v:0", "-map", "0:a?"]
 
     crf = QUALITY.get(str(opts.get("quality", "balanced")), 21)

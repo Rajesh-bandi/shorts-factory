@@ -149,13 +149,21 @@ def is_live_info(info) -> bool:
     return bool((info or {}).get("is_live")) or status in ("is_live", "is_live_starting")
 
 
-def live_capture_seconds() -> int:
-    """How much of a live stream to record before analysis (default 15 min)."""
-    raw = os.getenv("LIVE_CAPTURE_SECONDS", "900")
+def live_capture_seconds(whole=False) -> int:
+    """How much of a live stream to record; 0 means until it ends.
+
+    Live-chat jobs pass whole=True so their heatmap covers the entire stream.
+    An explicit LIVE_CAPTURE_SECONDS still wins, and 0 always means full.
+    """
+    raw = os.getenv("LIVE_CAPTURE_SECONDS")
+    if raw is None and whole:
+        return 0
     try:
-        seconds = int(raw)
+        seconds = int(raw if raw is not None else 900)
     except (TypeError, ValueError):
         seconds = 900
+    if seconds <= 0:
+        return 0
     return max(30, min(3600, seconds))
 
 
@@ -305,7 +313,13 @@ def record_live(url, job_id, user_id, seconds, stage_cb, cancel_cb=None, urls=No
     ends early, the shorter recording is kept and analyzed; canceling removes
     the partial file so a retry starts cleanly.
     """
-    seconds = max(30, min(3600, int(seconds or live_capture_seconds())))
+    if seconds is None:
+        seconds = live_capture_seconds()
+    try:
+        seconds = int(seconds)
+    except (TypeError, ValueError):
+        seconds = 0
+    seconds = 0 if seconds <= 0 else max(30, min(3600, seconds))
     directory = user_media_dir(user_id)
     path = os.path.join(directory, f"job{job_id}_live.mp4")
     if os.path.exists(path):
@@ -322,7 +336,10 @@ def record_live(url, job_id, user_id, seconds, stage_cb, cancel_cb=None, urls=No
     stream_urls = urls or resolve_stream_urls(url)
     if not stream_urls:
         raise RuntimeError("Could not resolve the live stream URL")
-    db.log(job_id, f"Recording live stream for up to {seconds // 60}m {seconds % 60:02d}s…")
+    if seconds:
+        db.log(job_id, f"Recording live stream for up to {seconds // 60}m {seconds % 60:02d}s…")
+    else:
+        db.log(job_id, "Recording the live stream until it ends…")
     stage_cb("recording", 0.08)
     tmp = os.path.join(directory, f"job{job_id}_live.part.mp4")
     try:
@@ -337,8 +354,10 @@ def record_live(url, job_id, user_id, seconds, stage_cb, cancel_cb=None, urls=No
         cmd += ["-map", "0:v:0?", "-map", "1:a:0?"]
     else:
         cmd += ["-map", "0:v:0?", "-map", "0:a:0?"]
+    if seconds:
+        cmd += ["-t", str(seconds)]
     cmd += [
-        "-t", str(seconds), "-c", "copy", "-movflags", "+faststart",
+        "-c", "copy", "-movflags", "+faststart",
         "-avoid_negative_ts", "make_zero", tmp,
     ]
 
@@ -357,7 +376,11 @@ def record_live(url, job_id, user_id, seconds, stage_cb, cancel_cb=None, urls=No
                 _stop_process(proc, force=True)
                 break
             elapsed = time.monotonic() - started
-            stage_cb("recording", min(0.29, 0.08 + 0.21 * (elapsed / seconds)))
+            if seconds:
+                stage_cb("recording", min(0.29, 0.08 + 0.21 * (elapsed / seconds)))
+            else:
+                # Unknown end time: let the bar creep toward the recording cap.
+                stage_cb("recording", min(0.29, 0.08 + 0.21 * min(1.0, elapsed / 10800)))
             time.sleep(0.5)
     except BaseException:
         _stop_process(proc, force=True)

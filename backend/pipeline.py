@@ -7,8 +7,9 @@ instead of silently losing an in-process thread.
 import json
 import os
 import threading
+import time
 
-from . import assistant, clipper, db, downloader, highlights, qa, settings as s, storage, transcribe, uploader
+from . import assistant, chat, clipper, db, downloader, highlights, qa, settings as s, storage, transcribe, uploader
 
 _analyze_lock = threading.Lock()
 _events_lock = threading.Lock()
@@ -102,6 +103,8 @@ def _options(user_id, job=None, extra=None):
         "caption_align": _as_bool(s.get(user_id, "caption_align", True), True),
         "clip_duration": int(s.get(user_id, "short_length", 45) or 45),
         "clip_mode": s.get(user_id, "clip_mode", "separate") or "separate",
+        "hook_mode": s.get(user_id, "hook_mode", "auto") or "auto",
+        "chat_highlights": _as_bool(s.get(user_id, "chat_highlights", True), True),
         "gpu_enabled": _as_bool(s.get(user_id, "gpu_enabled", True), True),
         "reframe": s.get(user_id, "reframe", "crop") or "crop",
         "resolution": str(s.get(user_id, "resolution", "1080") or "1080"),
@@ -128,6 +131,9 @@ def _options(user_id, job=None, extra=None):
         opts["reframe"] = "crop"
     if opts.get("clip_mode") not in ("separate", "multi_cut"):
         opts["clip_mode"] = "separate"
+    if opts.get("hook_mode") not in ("auto", "manual", "none"):
+        opts["hook_mode"] = "auto"
+    opts["chat_highlights"] = _as_bool(opts.get("chat_highlights"), True)
     if opts.get("caption_animation") not in ("static", "word", "pop"):
         opts["caption_animation"] = "static"
     if opts.get("caption_position") not in ("bottom", "center", "top"):
@@ -176,6 +182,10 @@ def run_analyze(job_id):
             segments = None
             raw_info = None
             live_capture = False
+            chat_events = []
+            chat_capture = None
+            chat_shift = 0.0
+            chat_enabled = _as_bool(merged.get("chat_highlights"), True)
 
             if source:
                 info = _source_info(source, job)
@@ -189,6 +199,10 @@ def run_analyze(job_id):
                         source, job_id, user_id, cb, job["url"], cancel_cb=ev.is_set
                     )
                     analysis_media = source
+                    if chat_enabled:
+                        chat_events = chat.read_events(job_id, user_id, info["duration"])
+                        if chat_events:
+                            db.log(job_id, f"Cached live chat found — {len(chat_events)} messages")
 
             if not source:
                 db.update_job(job_id, stage="downloading", progress=0.06)
@@ -210,11 +224,40 @@ def run_analyze(job_id):
                     }
                     db.update_job(job_id, title=info["title"], stage="recording", progress=0.08)
                     db.log(job_id, "Live stream detected — recording it before analysis…")
-                    recorded = downloader.record_live(
-                        job["url"], job_id, user_id, downloader.live_capture_seconds(),
-                        cb, cancel_cb=ev.is_set,
-                    )
+                    stream_urls = None
+                    if chat_enabled and chat.has_chat(raw_info):
+                        try:
+                            stream_urls = downloader.resolve_stream_urls(job["url"])
+                            if stream_urls:
+                                chat_capture = chat.LiveChatCapture(job["url"], job_id, user_id)
+                                chat_capture.start()
+                                db.log(job_id, "Capturing live chat alongside the recording…")
+                        except Exception as chat_exc:
+                            chat_capture = None
+                            stream_urls = None
+                            db.log(job_id, f"Live chat capture could not start: {chat_exc}", "warn")
+                    record_started_at = time.time()
+                    try:
+                        recorded = downloader.record_live(
+                            job["url"], job_id, user_id,
+                            downloader.live_capture_seconds(whole=chat_enabled),
+                            cb, cancel_cb=ev.is_set, urls=stream_urls,
+                        )
+                    finally:
+                        if chat_capture:
+                            chat_capture.stop()
                     _check(ev)
+                    if chat_capture:
+                        chat_shift = (chat_capture.started_at or record_started_at) - record_started_at
+                        chat.set_record_start(job_id, user_id, record_started_at)
+                        chat_events = chat.read_events(
+                            job_id, user_id, recorded["duration"], shift=chat_shift,
+                            start_epoch=record_started_at,
+                        )
+                        if chat_events:
+                            db.log(job_id, f"Live chat captured — {len(chat_events)} messages, scanning for spikes")
+                        else:
+                            db.log(job_id, "No usable live chat captured — falling back to transcript/AI", "warn")
                     source = recorded["path"]
                     info["path"] = source
                     info["duration"] = recorded["duration"]
@@ -264,11 +307,37 @@ def run_analyze(job_id):
             clip_mode = str(merged.get("clip_mode") or "separate")
             target_length = int(merged.get("clip_duration") or 45)
             wanted = 1 if clip_mode == "multi_cut" else max(1, int(job["short_count"]))
-            cands = highlights.pick_highlights(
-                analysis_media, info["title"], info["duration"], segments,
-                wanted, job_id, user_id, target_length, clip_mode,
-            )
+            chat_cands = []
+            if chat_events:
+                chat_cands = chat.spike_candidates(
+                    chat_events, info["duration"], wanted, target_length, clip_mode, segments
+                )
+            if chat_cands:
+                label = "clip" if len(chat_cands) == 1 else "clips"
+                db.log(job_id, f"Chat heatmap found {len(chat_cands)} spike {label}")
+            elif chat_events:
+                db.log(job_id, "Chat was steady — no spike strong enough; using transcript/AI", "warn")
+            if chat_cands and len(chat_cands) >= wanted:
+                cands = chat_cands
+            else:
+                normal_cands = highlights.pick_highlights(
+                    analysis_media, info["title"], info["duration"], segments,
+                    wanted, job_id, user_id, target_length, clip_mode,
+                )
+                cands = chat.merge_candidates(chat_cands, normal_cands, wanted) if chat_cands else normal_cands
             _check(ev)
+            hook_mode = str(merged.get("hook_mode") or "auto")
+            if hook_mode != "none" and cands:
+                db.update_job(job_id, stage="analyzing", progress=0.94)
+                db.log(job_id, "Writing 3 AI hook lines for each moment…")
+                context = {**job, "title": info.get("title") or job.get("title")}
+                for cand in cands:
+                    _check(ev)
+                    try:
+                        cand["hooks"] = assistant.suggest_hooks(user_id, context, cand).get("hooks") or []
+                    except Exception as e:
+                        cand["hooks"] = []
+                        db.log(job_id, f"Hook lines unavailable for one moment ({e})", "warn")
 
         if not cands:
             raise RuntimeError(
@@ -282,6 +351,7 @@ def run_analyze(job_id):
             "channel": info.get("channel") or "",
             "url": job["url"],
             "analysis": "live" if live_capture else ("captions" if (segments and not analysis_media) else "media"),
+            "chat_messages": len(chat_events),
         })
         db.update_job(
             job_id, status="review", stage="review", progress=1.0,
@@ -313,6 +383,7 @@ def run_manual(job_id):
     ev.clear()
     try:
         merged = _options(user_id, job)
+        merged["hook_mode"] = "none"
         _set_options(job_id, merged)
         cb = _stage_cb(job_id, ev)
         try:
@@ -709,6 +780,19 @@ def run_render(job_id):
             for key in ("start", "end", "title"):
                 if clip.get(key) not in (None, ""):
                     cand[key] = clip[key]
+            hook_mode = str(opts.get("hook_mode") or "auto")
+            if hook_mode == "none":
+                cand["hook"] = ""
+            elif clip.get("hook") is not None:
+                cand["hook"] = " ".join(str(clip.get("hook") or "").split())[:100]
+            else:
+                hooks = cand.get("hooks") or []
+                if hook_mode == "auto" and not hooks:
+                    try:
+                        hooks = assistant.suggest_hooks(user_id, job, cand).get("hooks") or []
+                    except Exception:
+                        hooks = []
+                cand["hook"] = "" if hook_mode == "manual" else " ".join(str((hooks or [""])[0] or "").split())[:100]
             try:
                 cand["start"] = max(0.0, float(cand["start"]))
                 cand["end"] = float(cand["end"])
@@ -726,6 +810,8 @@ def run_render(job_id):
             cuts = cand.get("cuts") or []
             detail = f" · {len(cuts)} cuts" if len(cuts) > 1 else f" [{cand['start']:.0f}-{cand['end']:.0f}s]"
             db.log(job_id, f"Rendering short {n}: {cand['title']}{detail}")
+            if cand.get("hook"):
+                db.log(job_id, f"Hook line: {cand['hook']}")
             result = _render_clip(job_id, job, user_id, opts, meta, cand, segments, idx, ev)
             _check(ev)
 

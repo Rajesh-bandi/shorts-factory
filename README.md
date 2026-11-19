@@ -123,7 +123,7 @@ the installer can finish. The button opens the release page if no installer is
 available for the current platform (for example, when running from source).
 
 To publish a new version, bump `package.json` and create a matching tag (for
-example `v1.3.0` for package version `1.3.0`). Tags may omit trailing zeroes:
+example `v1.4.0` for package version `1.4.0`). Tags may omit trailing zeroes:
 `v1`, `v1.0` and `v1.0.0` normalize to the same version. Pushing the tag starts
 GitHub Actions for both platforms and publishes the installers and
 `SHA256SUMS.txt`.
@@ -176,8 +176,10 @@ retention/watch-time metrics.
 ## Pipeline
 
 1. Read metadata and English captions without downloading video.
-   For an active live stream, record up to 15 minutes locally first
-   (`LIVE_CAPTURE_SECONDS`, 30–3600) and use that recording as the source.
+   For an active live stream, record it locally first. Live chat spikes record
+   until the stream ends so the heatmap covers the whole stream; set
+   `LIVE_CAPTURE_SECONDS` (30–3600, or `0` for no cap) to limit it. Without chat
+   spikes the existing `LIVE_CAPTURE_SECONDS` window is used.
 2. AI selects moments from the timed transcript. Long videos are map-reduced in
    overlapping windows so the end of a two-hour video is not dropped. Without
    AI, a transcript hook heuristic is used.
@@ -215,7 +217,7 @@ the local server to a public network.
 | `COOKIE_SECURE` | Only relevant to multi-server mode |
 | `MEDIA_RETENTION_DAYS` | Optional media cleanup policy (0 = keep) |
 | `DEFAULT_JOB_SECONDS` | Fallback ETA before enough job history exists |
-| `LIVE_CAPTURE_SECONDS` | Seconds recorded from a live stream before analysis (default 900) |
+| `LIVE_CAPTURE_SECONDS` | Cap for live recording. Default 900 without chat spikes; chat spikes record until the stream ends unless set. `0` means until the stream ends. |
 
 ## Optional multi-user server
 

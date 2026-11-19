@@ -107,6 +107,7 @@ async function main() {
     "--workpath", path.join(build, "pyinstaller"),
     "--specpath", build,
     "--add-data", `${path.join(root, "frontend")}${separator}frontend`,
+    "--add-data", `${path.join(root, "backend", "assets")}${separator}backend/assets`,
     ...googleDocs.flatMap((entry) => ["--add-data", entry]),
     "--collect-all", "yt_dlp",
     "--collect-all", "faster_whisper",

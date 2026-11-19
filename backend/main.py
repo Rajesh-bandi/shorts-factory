@@ -338,6 +338,8 @@ class JobCreate(BaseModel):
     caption_align: bool | None = None
     clip_duration: int | None = None
     clip_mode: str | None = None
+    hook_mode: str | None = None
+    chat_highlights: bool | None = None
     reframe: str | None = None
 
 
@@ -362,6 +364,7 @@ class ClipEdit(BaseModel):
     start: float | None = None
     end: float | None = None
     title: str | None = None
+    hook: str | None = None
 
 
 class JobSelect(BaseModel):
@@ -378,6 +381,7 @@ class JobSelect(BaseModel):
     caption_uppercase: bool | None = None
     caption_box: bool | None = None
     caption_align: bool | None = None
+    hook_mode: str | None = None
     reframe: str | None = None
 
 
@@ -411,6 +415,8 @@ class BatchCreate(BaseModel):
     privacy: str | None = None
     clip_duration: int | None = None
     clip_mode: str | None = None
+    hook_mode: str | None = None
+    chat_highlights: bool | None = None
     reframe: str | None = None
     caption_preset: str | None = None
     caption_animation: str | None = None
@@ -433,6 +439,8 @@ def _job_options(payload):
             "caption_align": getattr(payload, "caption_align", None),
             "clip_duration": getattr(payload, "clip_duration", None),
             "clip_mode": getattr(payload, "clip_mode", None),
+            "hook_mode": getattr(payload, "hook_mode", None),
+            "chat_highlights": getattr(payload, "chat_highlights", None),
             "reframe": getattr(payload, "reframe", None),
         }.items() if v is not None
     }
@@ -733,6 +741,7 @@ def _public_clip(row, user_id):
         "job_id": row.get("job_id"),
         "title": row.get("title") or "Short",
         "description": row.get("description") or "",
+        "path": path or None,
         "file": os.path.basename(path) if path else None,
         "thumb": os.path.basename(thumb) if thumb else None,
         "duration": row.get("duration") or 0,
