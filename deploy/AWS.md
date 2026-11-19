@@ -35,10 +35,17 @@ All four users share the instance. The app already scopes jobs, settings,
 media, and OAuth credentials by `user_id`; `MAX_USERS=4` plus the invite code
 is the access boundary. Each user can connect their own YouTube OAuth client.
 
-Rough cost: one 8 GB / 2 vCPU instance + 100 GB gp3 + Elastic IP +
-snapshots is usually about **$70–90/month** depending on region and family.
-A 4 GB instance is cheaper but can OOM when Whisper and two ffmpeg jobs run
-together; 8 GB is the safe minimum.
+Recommended size: **`t3.small` (2 vCPU, 2 GB)**. Four users share one
+serialized analysis queue, so this is the smallest instance that runs
+Postgres, the backend, Caddy/nginx and one ffmpeg render without constant
+swapping. New-account free-plan credits usually cover several months of this
+size; a legacy 12-month free-tier account can use `t3.micro` (1 GB) with the
+swap and concurrency settings in section 12, at the cost of slower renders.
+
+Rough cost: `t3.small` + 30 GB gp3 root + 50 GB gp3 data + Elastic IP is
+usually about **$20–28/month** depending on region. Enable T3 unlimited CPU
+credits so a render is not throttled after its burst balance runs out; normal
+four-user usage stays within a few cents of credit overage.
 
 ---
 
@@ -46,10 +53,12 @@ together; 8 GB is the safe minimum.
 
 Recommended baseline:
 
-- AMI: Ubuntu 24.04 LTS
-- Type: `t3.large` (2 vCPU, 8 GB) with unlimited CPU credits, or
-  `m7g.large` / `t4g.large` (Graviton) if you prefer ARM
-- Storage: 100 GB gp3 root (or 30 GB root + separate 100 GB gp3 data volume)
+- AMI: Ubuntu 24.04 LTS (x86_64)
+- Type: `t3.small` (2 vCPU, 2 GB), T3 unlimited CPU credits
+- Strict legacy free-tier fallback: `t3.micro` (1 GB), but add the 2 GB swap
+  file and use `WORKER_CONCURRENCY=1` (section 12)
+- Storage: 30 GB gp3 root + separate 50 GB gp3 data volume. Expand the data
+  volume when media grows; 50 GB holds roughly 25–40 live recordings.
 - Elastic IP: allocate and associate it
 - Security group:
   - 22/tcp from your admin IP only (or use SSM Session Manager and no SSH)
@@ -60,6 +69,19 @@ For a stricter "no public origin" setup, see section 11.
 
 DNS: create an `A` record `shorts.example.com -> Elastic IP` before starting
 Caddy, so the first certificate request succeeds.
+
+Add a 2 GB swap file. This is mandatory on `t3.micro`, and a useful cushion
+on `t3.small` during a 1080p render or a Whisper fallback:
+
+```bash
+sudo fallocate -l 2G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+echo 'vm.swappiness=10' | sudo tee -a /etc/sysctl.conf
+sudo sysctl vm.swappiness=10
+```
 
 ---
 
@@ -78,7 +100,7 @@ sudo mkdir -p /mnt/shorts/data /mnt/shorts/db /mnt/shorts/caddy/data /mnt/shorts
 ```
 
 Use the root volume for `/mnt/shorts` only if you deliberately want a single
-100 GB volume. A separate volume makes snapshots and resizing cleaner.
+volume. A separate volume makes snapshots and resizing cleaner.
 
 ---
 
@@ -134,7 +156,7 @@ POSTGRES_PASSWORD=<strong-random-password>
 DATABASE_URL=postgresql+psycopg://shorts:<same-password>@db:5432/shorts
 
 DATA_DIR=/data
-WORKER_CONCURRENCY=2
+WORKER_CONCURRENCY=1
 MEDIA_RETENTION_DAYS=14
 JOB_SOURCE_RETENTION_DAYS=7
 ```
@@ -361,20 +383,24 @@ recommended unless all four have static addresses.
 
 - One backend container, one uvicorn process. The durable worker is
   in-process; do not scale backend replicas or uvicorn workers.
-- `WORKER_CONCURRENCY=2` on 8 GB. Use `1` on 4 GB. More workers only contend
-  for the same two vCPUs and memory.
+- Set `WORKER_CONCURRENCY=1` in `.env` on `t3.small` and `t3.micro`. More
+  workers only contend for the same two vCPUs and 2 GB of RAM. Use `2` only
+  if you deliberately resize to 8 GB.
 - Analysis is serialized by an in-process lock, so extra workers do not make
-  transcript analysis parallel. A second worker can still run a manual cut or
-  a render while one analysis (including a live capture) holds the lock.
-- A live job can hold the analysis lock for up to 30 minutes (5 min scan +
-  capture). With two workers, one analysis plus one manual cut/render is the
-  comfortable limit; two simultaneous analyses serialize.
-- Whisper only runs when English captions are unavailable. On CPU, `small`
-  is slow. Set the per-user Whisper model to `base` if fallback speed matters.
+  transcript analysis parallel. A single worker keeps memory predictable.
+- A live job can hold the analysis lock for up to 30 minutes (5 min scan plus
+  the capture cap). Other analysis jobs wait; manual cuts and renders are
+  small enough to queue behind them.
+- Whisper only runs when English captions are unavailable. On CPU, the
+  `small` model is slow and memory-hungry. Set the per-user Whisper model to
+  `base` for the 2 GB instance.
 - Keep `MAX_USERS=4`; do not expose a registration page without the invite
   code.
-- 100 GB gp3 is enough for normal use with cleanup; use 200 GB if live
-  clipping is heavy (a 30-minute 1080p recording can be 1–2 GB).
+- 50 GB gp3 is enough for normal use with cleanup; monitor it and expand the
+  volume if live clipping is heavy (a 30-minute 1080p recording can be
+  1–2 GB). Retention env vars are not enforced, so delete old jobs in the UI.
+- On `t3.micro`, expect slower 1080p renders and keep an eye on swap with
+  `free -h`. If the kernel OOM-kills ffmpeg, resize to `t3.small`.
 
 ---
 
