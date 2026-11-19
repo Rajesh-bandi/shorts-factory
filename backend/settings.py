@@ -1,9 +1,7 @@
 """Per-user settings with encrypted secrets."""
 import json
-import socket
-from urllib.parse import urlparse
 
-from . import config, db, omniroute_sync, security
+from . import config, db, security
 
 KEYS = [
     # YouTube upload / analytics
@@ -15,12 +13,7 @@ KEYS = [
     "category_id",
     "upload_title_template",
     "upload_description_template",
-    # Built-in Omniroute (default) and optional custom OpenAI-compatible LLM
-    "omniroute_enabled",
-    "omniroute_sync_enabled",
-    "omniroute_sync_repo",
-    "omniroute_sync_token",
-    "omniroute_sync_passphrase",
+    # LLM (OpenAI-compatible, optional)
     "llm_base_url",
     "llm_api_key",
     "llm_model",
@@ -47,12 +40,7 @@ KEYS = [
     "caption_box",
 ]
 
-SECRET_KEYS = (
-    "yt_client_secret",
-    "llm_api_key",
-    "omniroute_sync_token",
-    "omniroute_sync_passphrase",
-)
+SECRET_KEYS = ("yt_client_secret", "llm_api_key")
 
 
 def get_all(user_id):
@@ -81,28 +69,6 @@ def public(user_id):
     values["registration_invite_required"] = bool(config.REGISTRATION_INVITE_CODE)
     values["max_users"] = config.MAX_USERS
     values["default_privacy"] = values.get("default_privacy") or config.DEFAULT_PRIVACY
-    values["omniroute_enabled"] = omniroute_enabled(user_id)
-    values["omniroute_online"] = omniroute_online() if values["omniroute_enabled"] else False
-    values["omniroute_model"] = config.OMNIROUTE_MODEL
-    values["omniroute_base_url"] = config.OMNIROUTE_BASE_URL
-    values["llm_provider"] = "omniroute" if values["omniroute_enabled"] else "custom"
-    values["omniroute_sync_available"] = bool(config.LOCAL_MODE)
-    values["has_omniroute_sync_token"] = bool(out.get("omniroute_sync_token"))
-    values["has_omniroute_sync_passphrase"] = bool(out.get("omniroute_sync_passphrase"))
-    values["omniroute_sync_configured"] = bool(
-        values.get("omniroute_sync_repo")
-        and out.get("omniroute_sync_token")
-        and out.get("omniroute_sync_passphrase")
-    )
-    sync_state = dict(omniroute_sync.read_state())
-    if not values.get("omniroute_sync_enabled"):
-        sync_state.update({"status": "disabled", "message": "Snapshot sync is off."})
-    elif not values["omniroute_sync_configured"]:
-        sync_state.update({
-            "status": "not_configured",
-            "message": "Add the private repo, read-only token and snapshot passphrase.",
-        })
-    values["omniroute_sync"] = sync_state
     return values
 
 
@@ -123,45 +89,15 @@ def update(user_id, payload: dict):
         db.set_setting(user_id, k, json.dumps(value) if not isinstance(value, str) else value)
 
 
-def omniroute_enabled(user_id):
-    """Built-in inference is the default in the desktop/local app."""
-    default = bool(config.LOCAL_MODE)
-    return bool(get(user_id, "omniroute_enabled", default))
-
-
-def omniroute_online():
-    """Cheap loopback TCP probe so Settings can show startup/offline state."""
-    parsed = urlparse(config.OMNIROUTE_BASE_URL)
-    host = parsed.hostname or "127.0.0.1"
-    port = parsed.port or (443 if parsed.scheme == "https" else 80)
-    try:
-        with socket.create_connection((host, port), timeout=0.35):
-            return True
-    except OSError:
-        return False
-
-
 def llm_config(user_id):
-    if omniroute_enabled(user_id):
-        # Its own loopback instance runs without an API key. The placeholder is
-        # only there for the common OpenAI-compatible request headers.
-        return {
-            "base_url": config.OMNIROUTE_BASE_URL,
-            "api_key": "local",
-            "model": config.OMNIROUTE_MODEL,
-            "provider": "omniroute",
-        }
     return {
         "base_url": get(user_id, "llm_base_url") or "https://api.openai.com/v1",
         "api_key": get(user_id, "llm_api_key") or "",
         "model": get(user_id, "llm_model") or "",
-        "provider": "custom",
     }
 
 
 def llm_available(user_id):
-    if omniroute_enabled(user_id):
-        return True
     cfg = llm_config(user_id)
     return bool(cfg["api_key"] and cfg["model"])
 

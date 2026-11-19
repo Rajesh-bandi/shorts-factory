@@ -6,6 +6,7 @@ remains as a fallback for sources where section extraction is unsupported.
 """
 import glob
 import os
+import signal
 import shutil
 import subprocess
 import sys
@@ -61,10 +62,16 @@ def user_media_dir(user_id):
 def existing_source(job_id, user_id):
     """Return a completed full source video for a job, if one is already on disk."""
     directory = user_media_dir(user_id)
+    patterns = (
+        os.path.join(directory, f"job{job_id}_source.*"),
+        os.path.join(directory, f"job{job_id}_live.*"),
+    )
     paths = [
         p
-        for p in glob.glob(os.path.join(directory, f"job{job_id}_source.*"))
+        for pattern in patterns
+        for p in glob.glob(pattern)
         if p.lower().endswith(SOURCE_EXTS)
+        and not p.lower().endswith(PARTIAL_EXTS)
         and os.path.isfile(p)
         and os.path.getsize(p) > 1024
     ]
@@ -136,6 +143,22 @@ def probe_public(url: str):
     return _clean_info(probe(url))
 
 
+def is_live_info(info) -> bool:
+    """True while yt-dlp reports the source as an active live stream."""
+    status = str((info or {}).get("live_status") or "").lower()
+    return bool((info or {}).get("is_live")) or status in ("is_live", "is_live_starting")
+
+
+def live_capture_seconds() -> int:
+    """How much of a live stream to record before analysis (default 15 min)."""
+    raw = os.getenv("LIVE_CAPTURE_SECONDS", "900")
+    try:
+        seconds = int(raw)
+    except (TypeError, ValueError):
+        seconds = 900
+    return max(30, min(3600, seconds))
+
+
 def _progress_hook(job_id, stage_cb, cancel_cb=None):
     def hook(d):
         if cancel_cb and cancel_cb():
@@ -198,6 +221,31 @@ def download(url: str, job_id: int, user_id: int, stage_cb, cancel_cb=None):
     }
 
 
+def _stop_process(proc, force=False):
+    """Stop a child process and its children on both POSIX and Windows."""
+    if proc.poll() is not None:
+        return
+    try:
+        if os.name == "nt":
+            subprocess.run(
+                ["taskkill", "/pid", str(proc.pid), "/T", "/F"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=15,
+                check=False,
+            )
+        else:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL if force else signal.SIGTERM)
+    except (OSError, ProcessLookupError, subprocess.SubprocessError):
+        try:
+            if force:
+                proc.kill()
+            else:
+                proc.terminate()
+        except OSError:
+            pass
+
+
 def _run_ytdlp(cmd, cancel_cb=None, timeout=1800):
     """Run yt-dlp and allow a render cancel to stop it immediately."""
     proc = subprocess.Popen(
@@ -213,31 +261,173 @@ def _run_ytdlp(cmd, cancel_cb=None, timeout=1800):
         while proc.poll() is None:
             if cancel_cb and cancel_cb():
                 canceled = True
-                try:
-                    os.killpg(os.getpgid(proc.pid), 15)
-                except (OSError, ProcessLookupError):
-                    proc.terminate()
+                _stop_process(proc, force=True)
                 break
             if time.monotonic() - started > timeout:
-                try:
-                    os.killpg(os.getpgid(proc.pid), 9)
-                except (OSError, ProcessLookupError):
-                    proc.kill()
+                _stop_process(proc, force=True)
                 raise RuntimeError("yt-dlp timed out")
             time.sleep(0.25)
-        _, stderr = proc.communicate()
+        stdout, stderr = proc.communicate()
     finally:
         if proc.poll() is None:
-            try:
-                os.killpg(os.getpgid(proc.pid), 9)
-            except (OSError, ProcessLookupError):
-                proc.kill()
+            _stop_process(proc, force=True)
     if canceled:
         raise RuntimeError("canceled")
     if proc.returncode != 0:
         tail = (stderr or "").strip().splitlines()[-4:]
         raise RuntimeError("yt-dlp failed: " + (" | ".join(tail) or "unknown error"))
-    return stderr or ""
+    return stdout or "", stderr or ""
+
+
+def resolve_stream_urls(url):
+    """Resolve the direct video/audio URLs for an active live stream."""
+    cmd = [
+        *ytdlp_command(),
+        "--no-playlist", "--no-warnings", "--get-url",
+        "--format", VIDEO_FORMAT,
+        url,
+    ]
+    stdout, _ = _run_ytdlp(cmd, timeout=120)
+    urls = []
+    for line in stdout.splitlines():
+        value = line.strip()
+        if value.startswith(("http://", "https://")) and value not in urls:
+            urls.append(value)
+    if not urls:
+        raise RuntimeError("Could not resolve the live stream URL")
+    return urls
+
+
+def record_live(url, job_id, user_id, seconds, stage_cb, cancel_cb=None, urls=None):
+    """Record a bounded segment of a live stream into a reusable local file.
+
+    ffmpeg copies the incoming video/audio without re-encoding. When the source
+    ends early, the shorter recording is kept and analyzed; canceling removes
+    the partial file so a retry starts cleanly.
+    """
+    seconds = max(30, min(3600, int(seconds or live_capture_seconds())))
+    directory = user_media_dir(user_id)
+    path = os.path.join(directory, f"job{job_id}_live.mp4")
+    if os.path.exists(path):
+        duration = probe_duration(path)
+        if duration > 1:
+            db.log(job_id, f"Reusing live recording {os.path.basename(path)} ({duration:.0f}s)")
+            stage_cb("recording", 0.30)
+            return {"path": path, "duration": duration, "recorded": duration}
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+    stream_urls = urls or resolve_stream_urls(url)
+    if not stream_urls:
+        raise RuntimeError("Could not resolve the live stream URL")
+    db.log(job_id, f"Recording live stream for up to {seconds // 60}m {seconds % 60:02d}s…")
+    stage_cb("recording", 0.08)
+    tmp = os.path.join(directory, f"job{job_id}_live.part.mp4")
+    try:
+        os.remove(tmp)
+    except OSError:
+        pass
+
+    cmd = ["ffmpeg", "-y", "-nostdin", "-loglevel", "error"]
+    for stream_url in stream_urls:
+        cmd += ["-i", stream_url]
+    if len(stream_urls) >= 2:
+        cmd += ["-map", "0:v:0?", "-map", "1:a:0?"]
+    else:
+        cmd += ["-map", "0:v:0?", "-map", "0:a:0?"]
+    cmd += [
+        "-t", str(seconds), "-c", "copy", "-movflags", "+faststart",
+        "-avoid_negative_ts", "make_zero", tmp,
+    ]
+
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    started = time.monotonic()
+    canceled = False
+    try:
+        while proc.poll() is None:
+            if cancel_cb and cancel_cb():
+                canceled = True
+                _stop_process(proc, force=True)
+                break
+            elapsed = time.monotonic() - started
+            stage_cb("recording", min(0.29, 0.08 + 0.21 * (elapsed / seconds)))
+            time.sleep(0.5)
+    except BaseException:
+        _stop_process(proc, force=True)
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
+    finally:
+        if proc.poll() is None:
+            _stop_process(proc, force=True)
+
+    if canceled:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise RuntimeError("canceled")
+
+    duration = probe_duration(tmp)
+    if proc.returncode != 0 or duration <= 1 or not os.path.exists(tmp) or os.path.getsize(tmp) <= 1024:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise RuntimeError("ffmpeg could not record this live stream")
+    os.replace(tmp, path)
+    stage_cb("recording", 0.30)
+    db.log(job_id, f"Recorded {duration:.0f}s of live video")
+    return {"path": path, "duration": duration, "recorded": duration}
+
+
+def trim_local(source, job_id, start, end, user_id, tag="0"):
+    """Cut a section from an already-downloaded source without re-encoding."""
+    start = max(0.0, float(start))
+    end = float(end)
+    if end <= start + 0.2:
+        raise RuntimeError("Section end must be after its start")
+    prefix = _section_prefix(job_id, start, end, str(tag), user_id)
+    existing = _pick_media(prefix, SOURCE_EXTS)
+    if existing:
+        cached_duration = probe_duration(existing)
+        if cached_duration > 0.2:
+            db.log(job_id, f"Reusing local section {os.path.basename(existing)} ({cached_duration:.1f}s)")
+            return {"path": existing, "start": start, "end": end, "duration": cached_duration}
+        try:
+            os.remove(existing)
+        except OSError:
+            pass
+    if not source or not os.path.exists(source):
+        raise RuntimeError("The local source file is missing")
+    db.log(job_id, f"Trimming local section {start:.1f}s–{end:.1f}s…")
+    cmd = [
+        "ffmpeg", "-y", "-nostdin", "-loglevel", "error",
+        "-ss", f"{start:.3f}", "-i", source,
+        "-t", f"{max(0.2, end - start):.3f}",
+        "-map", "0:v:0?", "-map", "0:a:0?",
+        "-c", "copy", "-avoid_negative_ts", "make_zero",
+        prefix + ".mp4",
+    ]
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
+    path = _pick_media(prefix, SOURCE_EXTS)
+    if proc.returncode != 0 or not path:
+        tail = (proc.stderr or "").strip().splitlines()[-3:]
+        raise RuntimeError("ffmpeg could not cut the local section: " + (" | ".join(tail) or "unknown error"))
+    duration = probe_duration(path)
+    if duration <= 0.2:
+        raise RuntimeError("The local section is unreadable")
+    db.log(job_id, f"Local section ready ({duration:.1f}s)")
+    return {"path": path, "start": start, "end": end, "duration": duration}
 
 
 def _section_prefix(job_id, start, end, tag, user_id):

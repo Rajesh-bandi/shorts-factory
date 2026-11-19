@@ -23,8 +23,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import (
-    advisor, analytics, assistant, auth, config, db, downloader, gpu,
-    omniroute_sync, pipeline, qa, settings, storage, updates, uploader, worker,
+    advisor, analytics, assistant, auth, config, db, downloader, gpu, pipeline,
+    qa, settings, storage, updates, uploader, worker,
 )
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -39,9 +39,7 @@ async def lifespan(_app):
         owner = db.ensure_local_user(config.LOCAL_USER_EMAIL, config.LOCAL_USER_NAME)
         config.LOCAL_USER_ID = int(owner["id"])
     worker.start()
-    omniroute_sync.start()
     yield
-    omniroute_sync.stop()
     worker.stop()
 
 
@@ -279,25 +277,10 @@ def post_settings(payload: SettingsPayload, user: CurrentUser):
         except ValueError as e:
             raise HTTPException(400, str(e))
     settings.update(user["id"], payload.settings)
-    if config.LOCAL_MODE and any(k.startswith("omniroute_sync_") for k in payload.settings):
-        omniroute_sync.wake()
     return {
         "ok": True,
         "llm_available": settings.llm_available(user["id"]),
         "output_dir": settings.get(user["id"], "output_dir", "") or "",
-        "settings": settings.public(user["id"]),
-    }
-
-
-@app.post("/api/omniroute/sync")
-def omniroute_sync_now(user: CurrentUser):
-    if not config.LOCAL_MODE:
-        raise HTTPException(404, "Snapshot sync is only available in the local app")
-    result = omniroute_sync.check(user["id"])
-    return {
-        "ok": result.get("status") in ("staged", "current"),
-        "sync": result,
-        "settings": settings.public(user["id"]),
     }
 
 
@@ -564,7 +547,12 @@ def _public_job(job, eta_ctx=None):
 
 def _source_name(user_id, job_id):
     directory = downloader.user_media_dir(user_id)
-    paths = [p for p in glob.glob(os.path.join(directory, f"job{job_id}_source.*")) if os.path.isfile(p)]
+    paths = []
+    for pattern in (f"job{job_id}_source.*", f"job{job_id}_live.*"):
+        paths.extend(
+            p for p in glob.glob(os.path.join(directory, pattern))
+            if os.path.isfile(p) and not p.lower().endswith(downloader.PARTIAL_EXTS)
+        )
     return os.path.basename(max(paths, key=os.path.getsize)) if paths else None
 
 
@@ -1037,10 +1025,6 @@ def health(user: CurrentUser):
         {"name": "CUDA transcription", "ok": gpu.cuda_available(), "detail": gpu.cuda_summary()},
         {"name": "NVENC rendering", "ok": gpu.nvenc_available(),
          "detail": "h264_nvenc available" if gpu.nvenc_available() else "CPU x264 fallback"},
-        {"name": "Omniroute AI",
-         "ok": (not settings.omniroute_enabled(user["id"])) or settings.omniroute_online(),
-         "detail": (f"built-in on {config.OMNIROUTE_BASE_URL}" if settings.omniroute_enabled(user["id"])
-                    else "off — using custom provider settings")},
     ]
     directory = downloader.user_media_dir(user["id"])
     try:
@@ -1075,10 +1059,8 @@ def health(user: CurrentUser):
 def ai_test(user: CurrentUser):
     if not settings.llm_available(user["id"]):
         raise HTTPException(400, "Add a Base URL, API key and model first")
-    cfg = settings.llm_config(user["id"])
-    if cfg.get("provider") == "omniroute" and not settings.omniroute_online():
-        raise HTTPException(503, "Built-in Omniroute is not reachable. Check the login snapshot and restart the app.")
     import requests
+    cfg = settings.llm_config(user["id"])
     started = time.time()
     try:
         resp = requests.post(
@@ -1090,9 +1072,10 @@ def ai_test(user: CurrentUser):
         )
         resp.raise_for_status()
         data = resp.json()
-        reply = str((data.get("choices") or [{}])[0].get("message", {}).get("content") or "").strip()
-        if not reply:
-            raise HTTPException(400, "AI endpoint returned an empty completion")
+        choices = data.get("choices") or []
+        reply = str((choices[0] if choices else {}).get("message", {}).get("content") or "").strip()
+        if not str(reply).strip():
+            raise HTTPException(400, "AI endpoint returned an empty response")
         return {"ok": True, "model": data.get("model") or cfg["model"], "reply": reply[:200],
                 "ms": int((time.time() - started) * 1000)}
     except HTTPException:

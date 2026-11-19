@@ -3,7 +3,8 @@
 Turn long YouTube videos into vertical Shorts on your own computer. The app
 reads the timed transcript first, lets AI choose the strongest moments,
 downloads **only the selected ranges**, and renders 9:16 clips with burned-in
-captions. Rendering is always local; publishing is explicit per clip from
+captions. Live streams are recorded for a bounded segment and then go through
+the same pipeline. Rendering is always local; publishing is explicit per clip from
 History, or can be enabled for normal AI-clip jobs with AI-written metadata.
 
 This is now a **single-workspace desktop app**: no sign-in screen, no account
@@ -19,10 +20,9 @@ and use their own copy independently.
 ```
 
 `run.sh` creates `.venv` and installs `requirements.txt`. For development you
-also need `node`, `ffmpeg`, `ffprobe` and `yt-dlp` on `PATH`. If Omniroute is
-installed, `run.sh` starts the same built-in AI instance on `127.0.0.1:20129`.
-SQLite lives at `data/shorts.db`, media at `data/media/<workspace-id>/`. The
-backend binds to loopback only.
+also need `ffmpeg`, `ffprobe` and `yt-dlp` on `PATH`. SQLite lives at
+`data/shorts.db`, media at `data/media/<workspace-id>/`. The backend binds to
+loopback only.
 
 Existing data is preserved: on first local start the app adopts the oldest
 existing profile in the database, so its jobs, clips, settings and OAuth token
@@ -70,13 +70,14 @@ npm run dist:mac
 
 `npm run dist` runs `scripts/build-desktop.js` first. It freezes the backend
 with PyInstaller, bundles static `ffmpeg`/`ffprobe`, and downloads a standalone
-`yt-dlp` into `build/bin`. It also vendors a pinned headless Omniroute runtime
-into `build/omniroute-runtime`, so friends do not install Node.js or the
-Omniroute CLI. Those files are copied into the app as read-only resources; the
-runtime adds roughly 1.3 GB on disk, which is why the installers are larger.
-Whisper models still download on first use into the app's user-data folder.
-Set `OMNIROUTE_RUNTIME_VERSION` to change the pinned runtime version, or
-`SF_FORCE_OMNIROUTE_RUNTIME=1` to rebuild it.
+`yt-dlp` into `build/bin`. Those files are copied into the app as read-only
+resources. Whisper models download on first use into the app's user-data
+folder, so the install itself stays small.
+
+The Windows NSIS installer uses `build/icon.ico` plus
+`build/installerSidebar.bmp` and `build/installerHeader.bmp` for its branded
+sidebar and header. The same icon is used for the desktop shortcut, taskbar and
+application window; the Linux AppImage uses `build/icon.png`.
 
 Windows and macOS builds must be produced on those systems (or on a CI runner
 for that platform); PyInstaller does not cross-compile. macOS builds are not
@@ -122,7 +123,7 @@ the installer can finish. The button opens the release page if no installer is
 available for the current platform (for example, when running from source).
 
 To publish a new version, bump `package.json` and create a matching tag (for
-example `v1.1.0` for package version `1.1.0`). Tags may omit trailing zeroes:
+example `v1.3.0` for package version `1.3.0`). Tags may omit trailing zeroes:
 `v1`, `v1.0` and `v1.0.0` normalize to the same version. Pushing the tag starts
 GitHub Actions for both platforms and publishes the installers and
 `SHA256SUMS.txt`.
@@ -134,6 +135,8 @@ GitHub Actions for both platforms and publishes the installers and
 - Review candidates before rendering: trim, rename, cut sequences, Hook Lab
   titles, per-word caption editing.
 - Section-only downloads, cached retries, CPU/GPU rendering, automated QA.
+- Live-stream support: records a configurable segment, then finds and renders
+  clips from that recording.
 - Durable queued jobs with ETA, queue position and live activity logs.
 - History, batch/series mode, analytics, growth advisor and CSV export.
 - Optional YouTube connect/upload with AI-written metadata, including automatic
@@ -153,9 +156,11 @@ Open **Settings** in the app:
 2. Paste the client ID and secret, save, then **Connect channel**. Desktop
    builds open Google in your normal browser; the local backend receives the
    callback.
-3. **AI** — built-in Omniroute is enabled by default and needs no API key. Turn
-   it off to use any custom OpenAI-compatible Base URL, API key and model.
-   Without either, the pipeline falls back to local heuristics.
+3. **AI** — enter your hosted Omniroute server's Base URL (for example
+   `https://ai.example.com/v1`), API key and model. The app no longer bundles
+   Omniroute, so installers are smaller and start faster; the server can run on
+   AWS EC2 and keep its provider state there. Any other OpenAI-compatible
+   endpoint also works. Without it, the pipeline falls back to local heuristics.
 4. **Pipeline** — choose Whisper model, GPU, clip length, output quality and the
    folder where finished clips are stored.
 
@@ -168,73 +173,11 @@ The app requests `youtube.force-ssl`, `youtube.readonly` and
 `yt-analytics.readonly` so it can upload, update privacy, delete, and read
 retention/watch-time metrics.
 
-### Built-in Omniroute AI
-
-Omniroute is the default AI provider. The desktop installer includes a pinned,
-headless Omniroute runtime, starts it on loopback (`127.0.0.1:20129`) with the
-app, and sends all AI calls through `auto/best-chat`. Friends do not need
-Node.js or a separate Omniroute install. Source runs (`./run.sh`) use a system
-Omniroute found on `PATH`, in npm/mise locations, or via `OMNIROUTE_BIN`. The
-installer never packages provider credentials.
-
-On first launch the app copies the local Omniroute data (`~/.omniroute` by
-default) into its private data folder. When a provider login expires:
-
-1. Open your local Omniroute dashboard and sign in again (normally
-   `omniroute serve` on `127.0.0.1:20128`).
-2. From this repository run `npm run omniroute:snapshot`.
-3. Restart Shorts Factory.
-
-The snapshot command stages a fresh database copy under the app's private data
-folder; the app activates it on the next launch. The snapshot contains provider
-credentials and the Omniroute storage key, so it is written with owner-only
-permissions and is ignored by Git. It is never included in a public release
-asset.
-
-### Sharing snapshots with friends
-
-The owner can publish the snapshot as one encrypted asset in a separate private
-repo. The app pulls it only when snapshot sync is configured; friends use their
-own read-only GitHub token and the passphrase the owner shares privately.
-
-Owner workflow after adding or repairing a provider login:
-
-1. Sign in to the local Omniroute dashboard.
-2. Run `npm run omniroute:publish`.
-3. The command uploads `omniroute-snapshot.enc` to the `snapshot` release in
-   `Rajesh-bandi/shorts-factory-omniroute`. The database and `.env` are encrypted
-   locally first; plaintext is never committed or uploaded.
-
-The first publish creates a passphrase at
-`~/.config/shorts-factory/omniroute-sync-passphrase` with owner-only permissions
-if one does not exist. Share that passphrase with friends through a password
-manager or another private channel. Do not commit the file or paste the
-passphrase into the repository. The default private repo can be changed with
-`--repo owner/name` or `OMNIROUTE_SYNC_REPO`.
-
-Friend setup, once per machine:
-
-1. Accept the owner's read-only invite to the private snapshot repo.
-2. Create a fine-grained GitHub token limited to that repo with **Contents:
-   Read-only**. Do not use a token with write access.
-3. Open **Settings → AI → Snapshot sync for friends**, enable it, enter the repo,
-   token and passphrase, then click **Check now**.
-4. Restart Shorts Factory. The downloaded snapshot is staged in `pending` and
-   becomes `current` on the next launch. The app checks again on launch and every
-   six hours; a new snapshot is always applied on the following restart.
-
-The token and passphrase are stored in the app's encrypted settings, not in the
-repo. The private repo contains only a passphrase-encrypted release asset; a Git
-history is deliberately avoided for snapshots. This model shares the owner's
-provider accounts and quotas. OAuth refresh tokens can be rotated or invalidated
-when several machines use them, and provider account-sharing terms may apply. If
-that is not acceptable, have each friend sign in to their own Omniroute instead.
-The snapshot carries logins only; the desktop installer already includes the
-Omniroute runtime, so friends do not install Node.js or the CLI separately.
-
 ## Pipeline
 
 1. Read metadata and English captions without downloading video.
+   For an active live stream, record up to 15 minutes locally first
+   (`LIVE_CAPTURE_SECONDS`, 30–3600) and use that recording as the source.
 2. AI selects moments from the timed transcript. Long videos are map-reduced in
    overlapping windows so the end of a two-hour video is not dropped. Without
    AI, a transcript hook heuristic is used.
@@ -266,16 +209,13 @@ the local server to a public network.
 | `APP_SECRET_KEY` | Encryption key for per-workspace secrets |
 | `DATA_DIR` | Database and media root |
 | `APP_VERSION` | Current desktop version used by update checks |
-| `OMNIROUTE_BASE_URL` | Built-in Omniroute API base (default `http://127.0.0.1:20129/v1`) |
-| `OMNIROUTE_MODEL` | Built-in Omniroute model (default `auto/best-chat`) |
-| `OMNIROUTE_SYNC_INTERVAL_SECONDS` | How often the app checks the private snapshot repo (default 21600) |
-| `OMNIROUTE_SYNC_REPO` | Default private repo used by `npm run omniroute:publish` |
 | `UPDATE_REPO` | Public GitHub repository that hosts releases |
 | `UPDATE_API_URL` | Override the releases feed (advanced/testing) |
 | `WORKER_CONCURRENCY` | Durable job workers (default 2) |
 | `COOKIE_SECURE` | Only relevant to multi-server mode |
 | `MEDIA_RETENTION_DAYS` | Optional media cleanup policy (0 = keep) |
 | `DEFAULT_JOB_SECONDS` | Fallback ETA before enough job history exists |
+| `LIVE_CAPTURE_SECONDS` | Seconds recorded from a live stream before analysis (default 900) |
 
 ## Optional multi-user server
 

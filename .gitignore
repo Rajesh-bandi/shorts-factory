@@ -5,15 +5,6 @@ data/
 !.env.example
 .freebuff/
 
-# Omniroute credential snapshots and databases (never commit)
-.omniroute/
-omniroute-snapshot/
-omniroute-snapshot.enc
-omniroute-sync-passphrase
-*.sqlite
-*.sqlite-wal
-*.sqlite-shm
-
 # Python
 .venv/
 __pycache__/
@@ -25,8 +16,13 @@ node_modules/
 npm-debug.log*
 *.log
 
-# Desktop build output
-build/
+# Desktop build output (keep the icons and installer art tracked)
+build/*
+!build/icon.png
+!build/icon.ico
+!build/icon.svg
+!build/installerHeader.bmp
+!build/installerSidebar.bmp
 dist/
 release/
 squashfs-root/

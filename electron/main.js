@@ -7,13 +7,9 @@ const path = require("path");
 const { spawn } = require("child_process");
 const { Readable, Transform } = require("stream");
 const { pipeline } = require("stream/promises");
-const omniroute = require("./omniroute");
 
 const PORT = Number(process.env.SF_PORT) || 8787;
 const APP_URL = `http://127.0.0.1:${PORT}`;
-const OMNIROUTE_PORT = Number(process.env.SF_OMNIROUTE_PORT) || 20129;
-const OMNIROUTE_BASE_URL = `http://127.0.0.1:${OMNIROUTE_PORT}/v1`;
-const OMNIROUTE_MODEL = process.env.SF_OMNIROUTE_MODEL || process.env.OMNIROUTE_MODEL || "auto/best-chat";
 const UPDATE_REPO = "Rajesh-bandi/shorts-factory";
 const isWindows = process.platform === "win32";
 const isMac = process.platform === "darwin";
@@ -24,9 +20,6 @@ let backendProcess = null;
 let ownsBackend = false;
 let shuttingDown = false;
 let backendLog = null;
-let omnirouteProcess = null;
-let omnirouteLog = null;
-let ownsOmniroute = false;
 let updateInstallInProgress = false;
 
 function logPath() {
@@ -73,205 +66,6 @@ function probe() {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function omnirouteRoot() {
-  return path.join(dataPath(), "omniroute");
-}
-
-function omnirouteLogPath() {
-  return path.join(path.dirname(logPath()), "omniroute.log");
-}
-
-function omniroutePidPath(root) {
-  return path.join(root, "omniroute.pid");
-}
-
-function processAlive(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (_) {
-    return false;
-  }
-}
-
-function terminatePid(pid) {
-  if (!pid || !processAlive(pid)) return;
-  try {
-    if (isWindows) {
-      spawn("taskkill", ["/pid", String(pid), "/T", "/F"], { windowsHide: true, stdio: "ignore" });
-    } else {
-      process.kill(-pid, "SIGTERM");
-    }
-  } catch (_) {
-    try { process.kill(pid, "SIGTERM"); } catch (__) { /* already gone */ }
-  }
-}
-
-function storedOmniroutePid(root) {
-  try {
-    const pid = Number(fs.readFileSync(omniroutePidPath(root), "utf8").trim());
-    return Number.isFinite(pid) && pid > 0 ? pid : 0;
-  } catch (_) {
-    return 0;
-  }
-}
-
-function clearOmniroutePid(root) {
-  try { fs.rmSync(omniroutePidPath(root), { force: true }); } catch (_) { /* ignore */ }
-}
-
-function probeOmniroute() {
-  return new Promise((resolve) => {
-    const req = http.get(
-      { host: "127.0.0.1", port: OMNIROUTE_PORT, path: "/api/health", timeout: 900 },
-      (res) => {
-        res.resume();
-        res.on("end", () => resolve(res.statusCode === 200));
-      }
-    );
-    req.on("timeout", () => { req.destroy(); resolve(false); });
-    req.on("error", () => resolve(false));
-  });
-}
-
-function omnirouteNote(message) {
-  if (omnirouteLog) omnirouteLog.write(`[desktop] ${message}\n`);
-}
-
-async function startOmniroute() {
-  const root = omnirouteRoot();
-  fs.mkdirSync(root, { recursive: true, mode: 0o700 });
-  try { fs.chmodSync(root, 0o700); } catch (_) { /* Windows */ }
-
-  const pending = path.join(root, "pending");
-  if (await probeOmniroute()) {
-    if (!omniroute.hasSnapshot(pending)) {
-      console.log(`[omniroute] using already-running instance on ${OMNIROUTE_PORT}`);
-      return true;
-    }
-    // A previous app process left its Omniroute running. Stop only the PID we
-    // recorded, then activate the newly staged login snapshot below.
-    const pid = storedOmniroutePid(root);
-    if (pid && processAlive(pid)) {
-      console.log("[omniroute] stopping previous instance to activate staged login");
-      terminatePid(pid);
-      const deadline = Date.now() + 8_000;
-      while (Date.now() < deadline && await probeOmniroute()) await sleep(250);
-    }
-    if (await probeOmniroute()) {
-      console.error("[omniroute] port is occupied by an instance this app does not own; snapshot left pending");
-      return true;
-    }
-    clearOmniroutePid(root);
-  }
-
-  const current = path.join(root, "current");
-  try {
-    if (omniroute.activatePending(root)) {
-      console.log("[omniroute] activated staged login snapshot");
-    }
-    if (!omniroute.hasSnapshot(current)) {
-      try {
-        if (omniroute.seedFromSource(root, omniroute.defaultSourceDir())) {
-          console.log(`[omniroute] seeded app data from ${omniroute.defaultSourceDir()}`);
-        }
-      } catch (err) {
-        console.error(`[omniroute] seed failed: ${err.message}`);
-      }
-    }
-  } catch (err) {
-    console.error(`[omniroute] snapshot activation failed: ${err.message}`);
-  }
-
-  if (!omniroute.hasSnapshot(current)) {
-    console.error("[omniroute] no login snapshot is available; built-in AI is offline");
-    return false;
-  }
-
-  const cli = omniroute.findCli();
-  if (!cli) {
-    console.error("[omniroute] CLI not found; install Omniroute or set OMNIROUTE_BIN");
-    return false;
-  }
-
-  fs.mkdirSync(path.dirname(omnirouteLogPath()), { recursive: true });
-  omnirouteLog = fs.createWriteStream(omnirouteLogPath(), { flags: "a" });
-  omnirouteLog.write(`\n\n[desktop] starting Omniroute ${cli} on ${OMNIROUTE_PORT}\n[desktop] data ${current}\n`);
-
-  const runner = omniroute.cliRunner(cli);
-  const args = [
-    ...runner.prefix,
-    "serve",
-    "--headless",
-    "--no-open",
-    "--no-tray",
-    "--no-recovery",
-    "--port",
-    String(OMNIROUTE_PORT),
-  ];
-  const env = {
-    ...process.env,
-    ...runner.env,
-    DATA_DIR: current,
-    PORT: String(OMNIROUTE_PORT),
-    HOSTNAME: "127.0.0.1",
-    OMNIROUTE_SERVER_HOST: "127.0.0.1",
-    REQUIRE_API_KEY: "false",
-    OMNIROUTE_HEADLESS: "1",
-    OMNIROUTE_READY_TIMEOUT_MS: "60000",
-  };
-
-  omnirouteProcess = spawn(runner.command, args, {
-    cwd: current,
-    env,
-    windowsHide: true,
-    detached: !isWindows,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  ownsOmniroute = true;
-  const omniroutePid = omnirouteProcess.pid;
-  try { fs.writeFileSync(omniroutePidPath(root), String(omniroutePid), { mode: 0o600 }); } catch (_) { /* best effort */ }
-  omnirouteProcess.stdout.pipe(omnirouteLog);
-  omnirouteProcess.stderr.pipe(omnirouteLog);
-  omnirouteProcess.on("error", (err) => omnirouteNote(`spawn error: ${err.message}`));
-  omnirouteProcess.on("exit", (code, signal) => {
-    omnirouteNote(`exited (${signal || code})`);
-    if (storedOmniroutePid(root) === omniroutePid) clearOmniroutePid(root);
-    if (omnirouteLog) omnirouteLog.end();
-    omnirouteLog = null;
-    omnirouteProcess = null;
-    ownsOmniroute = false;
-  });
-
-  const deadline = Date.now() + 75_000;
-  while (Date.now() < deadline) {
-    if (await probeOmniroute()) {
-      omnirouteNote("ready");
-      console.log(`[omniroute] ready on ${OMNIROUTE_PORT}`);
-      return true;
-    }
-    if (!omnirouteProcess) break;
-    await sleep(600);
-  }
-  omnirouteNote("did not become ready");
-  console.error(`[omniroute] did not become ready. See ${omnirouteLogPath()}`);
-  stopOmniroute();
-  return false;
-}
-
-function stopOmniroute() {
-  if (!ownsOmniroute || !omnirouteProcess) return;
-  const pid = omnirouteProcess.pid;
-  // Omniroute's CLI starts a child server. It was spawned as a process group
-  // leader, so terminate the whole group. Keep the PID file until the child
-  // exits so a crash during shutdown can still be cleaned up on next launch.
-  terminatePid(pid);
-  omnirouteProcess = null;
-  ownsOmniroute = false;
-  if (omnirouteLog) omnirouteLog.end();
-  omnirouteLog = null;
 }
 
 function shellQuote(value) {
@@ -472,8 +266,6 @@ function startBackend() {
       PORT: String(PORT),
       SERVE_FRONTEND: "true",
       PYTHONUNBUFFERED: "1",
-      OMNIROUTE_BASE_URL: OMNIROUTE_BASE_URL,
-      OMNIROUTE_MODEL: OMNIROUTE_MODEL,
       PATH: `${bin.dir}${path.delimiter}${process.env.PATH || ""}`,
     };
     if (fs.existsSync(bin.ytdlp)) env.YTDLP_BIN = bin.ytdlp;
@@ -529,7 +321,6 @@ function appMenu() {
       label: "Shorts Factory",
       submenu: [
         { label: "Open data folder", click: () => shell.openPath(dataPath()) },
-        { label: "Open Omniroute data folder", click: () => shell.openPath(omnirouteRoot()) },
         { label: "Open logs folder", click: () => shell.openPath(path.dirname(logPath())) },
         { type: "separator" },
         { role: isMac ? "close" : "quit" },
@@ -629,6 +420,7 @@ function installIpc() {
 
 async function boot() {
   app.setName("Shorts Factory");
+  app.setAppUserModelId("com.shortsfactory.desktop");
   installIpc();
   await app.whenReady();
   appMenu();
@@ -636,15 +428,7 @@ async function boot() {
   createWindow();
 
   try {
-    // Start both local services together, but keep a failed Omniroute from
-    // blocking the studio: the user can disable built-in AI and use a custom
-    // provider from Settings.
-    const omnirouteStart = startOmniroute().catch((err) => {
-      console.error(`[omniroute] ${err.message || err}`);
-      return false;
-    });
     await startBackend();
-    await omnirouteStart;
     if (!mainWindow || mainWindow.isDestroyed()) return;
     await mainWindow.loadURL(APP_URL);
   } catch (err) {
@@ -669,7 +453,6 @@ if (!gotLock) {
   app.on("before-quit", () => {
     shuttingDown = true;
     stopBackend();
-    stopOmniroute();
   });
   app.on("window-all-closed", () => app.quit());
   app.on("activate", () => {

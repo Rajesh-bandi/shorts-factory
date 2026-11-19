@@ -500,7 +500,7 @@
       error: { label: "Failed", tone: "bad" }, canceled: { label: "Canceled", tone: "muted" } })[status] || { label: status || "—", tone: "muted" };
   }
   function stageLabel(stage) {
-    return ({ queued: "Queued", downloading: "Reading source / fetching", transcribing: "Transcript", analyzing: "AI picking moments",
+    return ({ queued: "Queued", downloading: "Reading source / fetching", recording: "Recording live", transcribing: "Transcript", analyzing: "AI picking moments",
       review: "Awaiting review", manual: "Manual cut ready", clipping: "Fetching ranges + rendering", uploading: "Uploading", done: "Done",
       canceling: "Canceling", canceled: "Canceled" })[stage] || stage || "Working";
   }
@@ -570,7 +570,8 @@
   function stageRail(j) {
     const order = ["downloading", "transcribing", "analyzing", "review", "clipping", "uploading", "done"];
     const names = ["source", "transcript", "ai pick", "review", "render", "upload", "done"];
-    let cur = order.indexOf(j.status === "done" ? "done" : (j.stage || j.status));
+    const stage = j.stage === "recording" ? "downloading" : (j.stage || j.status);
+    let cur = order.indexOf(j.status === "done" ? "done" : stage);
     if (cur < 0) cur = order.indexOf(j.status);
     if (cur < 0) cur = j.status === "queued" ? -1 : 0;
     return `<div class="stages">${names.map((n, i) => `<span class="stage-step${i < cur ? " done" : i === cur ? " active" : ""}">${i < cur ? icon("check") : ""}${n}</span>`).join("")}</div>`;
@@ -823,6 +824,20 @@
       return openCutLinks(job, cuts);
     }
     const start = Math.floor(ed ? ed.start : (candidate.start || 0));
+    if (job.source) {
+      const fresh = `${Date.now()}`;
+      showModal({
+        title: `Source preview · ${start}s`,
+        wide: true,
+        body: `<video id="sourcePreviewVideo" class="clip-video" controls autoplay playsinline preload="metadata" src="/media/${encodeURIComponent(job.source)}?v=${fresh}"></video><p class="hint" style="margin-top:10px">Previewing the local source recording. The render crops this to 9:16.</p>`
+      });
+      const video = document.getElementById("sourcePreviewVideo");
+      if (!video) return;
+      const seek = () => { try { video.currentTime = start; } catch (_) { /* live edge */ } };
+      if (video.readyState >= 1) seek();
+      else video.addEventListener("loadedmetadata", seek, { once: true });
+      return;
+    }
     const vid = youtubeId(job.url);
     if (!vid) return toast("This source is not a YouTube video", "warn");
     showModal({ title: `Source preview · ${start}s`, wide: true, body: `<div class="video-frame"><iframe src="https://www.youtube-nocookie.com/embed/${vid}?start=${start}&autoplay=1&rel=0" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe></div><p class="hint" style="margin-top:10px">The source opens at the clip start. The render crops this to 9:16.</p>` });
@@ -861,7 +876,7 @@
       list.querySelectorAll("[data-cut-link]").forEach((el) => el.classList.toggle("on", el === button));
     });
   }
-  const youtubeId = (url) => { const m = String(url || "").match(/(?:v=|youtu\.be\/|shorts\/|embed\/)([\w-]{11})/); return m ? m[1] : ""; };
+  const youtubeId = (url) => { const m = String(url || "").match(/(?:v=|youtu\.be\/|shorts\/|live\/|embed\/)([\w-]{11})/); return m ? m[1] : ""; };
   function openClip(file) {
     // Break browser caches when a job is re-rendered under the same filename.
     const fresh = `${Date.now()}`;
@@ -1547,7 +1562,6 @@
     terminal: { label: "Terminal", blurb: "green bar", size: 40, color: "#b8bb26", highlight: "#fabd2f", outline: 0, shadow: 0, uppercase: true, box: true, bold: true, animation: "static" }
   };
   const SETTING_IDS = ["yt_client_id", "yt_client_secret", "default_privacy", "upload_tags", "category_id",
-    "omniroute_enabled", "omniroute_sync_enabled", "omniroute_sync_repo", "omniroute_sync_token", "omniroute_sync_passphrase",
     "llm_base_url", "llm_api_key", "llm_model", "whisper_model", "gpu_enabled", "short_length", "clip_mode", "clip_duration",
     "reframe", "resolution", "quality", "caption_preset", "caption_size", "caption_position",
     "caption_color", "caption_highlight", "caption_animation", "caption_uppercase", "caption_box", "output_dir"];
@@ -1570,68 +1584,15 @@
       const hasAi = !!state.settings.has_llm_api_key;
       const ytInput = $("#yt_client_secret"), aiInput = $("#llm_api_key");
       if (ytInput) { ytInput.value = ""; ytInput.placeholder = hasYt ? "•••• saved — leave blank to keep" : "••••••••"; }
-      if (aiInput) { aiInput.value = ""; aiInput.placeholder = hasAi ? "•••• saved — leave blank to keep" : "sk-…"; }
+      if (aiInput) { aiInput.value = ""; aiInput.placeholder = hasAi ? "•••• saved — leave blank to keep" : "key configured on your server"; }
       $("#ytSecretSaved").hidden = !hasYt;
       $("#llmKeySaved").hidden = !hasAi;
-      const syncToken = $("#omniroute_sync_token"), syncPass = $("#omniroute_sync_passphrase");
-      const hasSyncToken = !!state.settings.has_omniroute_sync_token;
-      const hasSyncPass = !!state.settings.has_omniroute_sync_passphrase;
-      if (syncToken) { syncToken.value = ""; syncToken.placeholder = hasSyncToken ? "•••• saved — leave blank to keep" : "github_pat_…"; }
-      if (syncPass) { syncPass.value = ""; syncPass.placeholder = hasSyncPass ? "•••• saved — leave blank to keep" : "••••••••"; }
-      if ($("#omnirouteSyncTokenSaved")) $("#omnirouteSyncTokenSaved").hidden = !hasSyncToken;
-      if ($("#omnirouteSyncPassSaved")) $("#omnirouteSyncPassSaved").hidden = !hasSyncPass;
-      if ($("#omnirouteSyncConfig")) $("#omnirouteSyncConfig").hidden = !state.settings.omniroute_sync_available;
-      state.settings.omniroute_online = !!res.settings?.omniroute_online;
-      syncAIProviderUI();
-      renderOmnirouteSync();
-      updateAiPill(res.llm_available);
+      $("#aiPill").textContent = res.llm_available ? "AI ready" : "rules mode";
+      $("#aiPill").className = "pill " + (res.llm_available ? "ok" : "muted");
       populateCreateDefaults();
       syncCaptionControls();
       updateCaptionPreview();
     } catch (e) { toast("Could not load settings: " + e.message, "err"); }
-  }
-  function updateAiPill(available) {
-    const pill = $("#aiPill");
-    if (!pill) return;
-    if (state.settings.omniroute_enabled !== false) {
-      const online = !!state.settings.omniroute_online;
-      pill.textContent = online ? "Omniroute ready" : "Omniroute offline";
-      pill.className = "pill " + (online ? "ok" : "warn");
-      return;
-    }
-    pill.textContent = available ? "AI ready" : "rules mode";
-    pill.className = "pill " + (available ? "ok" : "muted");
-  }
-  function syncAIProviderUI() {
-    const toggle = $("#omniroute_enabled");
-    const on = toggle ? toggle.checked : true;
-    const manual = $("#manualAIConfig");
-    if (manual) manual.hidden = on;
-    const hint = $("#omnirouteHint");
-    if (hint) {
-      hint.textContent = on
-        ? "Default on. Runs on 127.0.0.1:20129 and overrides the custom provider below."
-        : "Built-in Omniroute is off. The custom provider below is used instead.";
-    }
-    const out = $("#aiTestResult");
-    if (out) { out.className = "test-result"; out.textContent = ""; }
-  }
-  function renderOmnirouteSync() {
-    const box = $("#omnirouteSyncConfig"), out = $("#omnirouteSyncStatus");
-    if (!box) return;
-    box.hidden = !state.settings.omniroute_sync_available;
-    if (!out) return;
-    const sync = state.settings.omniroute_sync || {};
-    const enabled = !!state.settings.omniroute_sync_enabled;
-    const configured = !!state.settings.omniroute_sync_configured;
-    let status = sync.status || "idle";
-    let message = sync.message || "Not checked yet.";
-    if (!enabled) { status = "disabled"; message = "Snapshot sync is off."; }
-    else if (!configured) { status = "not_configured"; message = "Add the private repo, read-only token and passphrase."; }
-    if (status === "staged") message = message || "Update staged — restart Shorts Factory to apply it.";
-    if (status === "current") message = message || "Up to date.";
-    out.className = "test-result" + (status === "current" ? " ok" : (status === "error" || status === "not_configured") ? " bad" : "");
-    out.textContent = message;
   }
   function populateCreateDefaults() {
     const s = state.settings;
@@ -1660,7 +1621,7 @@
       if (!el) return;
       if (el.type === "checkbox") { out[id] = el.checked; return; }
       const val = String(el.value).trim();
-      if (id === "yt_client_secret" || id === "llm_api_key" || id === "omniroute_sync_token" || id === "omniroute_sync_passphrase") { if (val) out[id] = val; return; }
+      if (id === "yt_client_secret" || id === "llm_api_key") { if (val) out[id] = val; return; }
       if (["short_length", "clip_duration", "caption_size"].includes(id)) out[id] = Number(val) || (id === "caption_size" ? 46 : 45);
       else out[id] = val;
     });
@@ -1679,16 +1640,8 @@
       }
       if (payload.yt_client_secret) { state.settings.has_yt_client_secret = true; $("#yt_client_secret").value = ""; $("#yt_client_secret").placeholder = "•••• saved — leave blank to keep"; $("#ytSecretSaved").hidden = false; }
       if (payload.llm_api_key) { state.settings.has_llm_api_key = true; $("#llm_api_key").value = ""; $("#llm_api_key").placeholder = "•••• saved — leave blank to keep"; $("#llmKeySaved").hidden = false; }
-      if (payload.omniroute_sync_token) { state.settings.has_omniroute_sync_token = true; if ($("#omniroute_sync_token")) { $("#omniroute_sync_token").value = ""; $("#omniroute_sync_token").placeholder = "•••• saved — leave blank to keep"; } if ($("#omnirouteSyncTokenSaved")) $("#omnirouteSyncTokenSaved").hidden = false; }
-      if (payload.omniroute_sync_passphrase) { state.settings.has_omniroute_sync_passphrase = true; if ($("#omniroute_sync_passphrase")) { $("#omniroute_sync_passphrase").value = ""; $("#omniroute_sync_passphrase").placeholder = "•••• saved — leave blank to keep"; } if ($("#omnirouteSyncPassSaved")) $("#omnirouteSyncPassSaved").hidden = false; }
-      // The response is the public settings view (secrets stay out of it), so
-      // merging it keeps sync/status state aligned with what the server saved.
-      if (res.settings) Object.assign(state.settings, res.settings);
-      delete state.settings.omniroute_sync_token;
-      delete state.settings.omniroute_sync_passphrase;
-      syncAIProviderUI();
-      renderOmnirouteSync();
-      updateAiPill(res.llm_available);
+      $("#aiPill").textContent = res.llm_available ? "AI ready" : "rules mode";
+      $("#aiPill").className = "pill " + (res.llm_available ? "ok" : "muted");
       populateCreateDefaults();
       const msg = $("#saveMsg");
       msg.textContent = "✓ settings saved"; msg.className = "save-msg ok";
@@ -1844,27 +1797,6 @@
       out.className = "test-result ok"; out.textContent = `✓ ${r.model} replied “${r.reply}” in ${r.ms}ms`;
     } catch (e) { out.className = "test-result bad"; out.textContent = "✗ " + e.message; }
     finally { btn.classList.remove("loading"); btn.disabled = false; }
-  }
-
-  async function syncOmnirouteNow() {
-    const btn = $("#btnOmnirouteSync"), out = $("#omnirouteSyncStatus");
-    if (btn) { btn.classList.add("loading"); btn.disabled = true; }
-    if (out) { out.className = "test-result"; out.textContent = "Checking the private repo…"; }
-    try {
-      await saveSettings(true);
-      const res = await api("/omniroute/sync", { method: "POST" });
-      if (res.settings) Object.assign(state.settings, res.settings);
-      renderOmnirouteSync();
-      const status = res.sync?.status;
-      if (status === "staged") toast("Snapshot staged — restart Shorts Factory to apply it", "ok", "Omniroute sync");
-      else if (status === "current") toast("Already on the latest snapshot", "ok", "Omniroute sync");
-      else toast(res.sync?.message || "Snapshot sync did not complete", "err", "Omniroute sync");
-    } catch (e) {
-      if (out) { out.className = "test-result bad"; out.textContent = "✗ " + e.message; }
-      toast(e.message, "err", "Omniroute sync");
-    } finally {
-      if (btn) { btn.classList.remove("loading"); btn.disabled = false; }
-    }
   }
 
   /* ---------- auth ---------- */
@@ -2414,9 +2346,6 @@
     $("#btnSave").addEventListener("click", () => saveSettings());
     if ($("#btnChooseOutput")) $("#btnChooseOutput").addEventListener("click", chooseOutputFolder);
     $("#btnTestAI").addEventListener("click", testAI);
-    if ($("#omniroute_enabled")) $("#omniroute_enabled").addEventListener("change", syncAIProviderUI);
-    if ($("#btnOmnirouteSync")) $("#btnOmnirouteSync").addEventListener("click", syncOmnirouteNow);
-    if ($("#omniroute_sync_enabled")) $("#omniroute_sync_enabled").addEventListener("change", renderOmnirouteSync);
     $("#btnHealth").addEventListener("click", () => loadHealth(true));
     $("#btnConnect").addEventListener("click", startConnect);
     $("#btnCancelAuth").addEventListener("click", cancelConnect);

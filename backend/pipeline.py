@@ -175,6 +175,7 @@ def run_analyze(job_id):
             analysis_media = None
             segments = None
             raw_info = None
+            live_capture = False
 
             if source:
                 info = _source_info(source, job)
@@ -196,38 +197,67 @@ def run_analyze(job_id):
                     raw_info = downloader.probe(job["url"])
                 except Exception as e:
                     raise RuntimeError(f"Could not read this YouTube video: {e}") from e
-                duration = float(raw_info.get("duration") or 0)
-                if duration <= 0:
-                    raise RuntimeError("This video reports no duration (a live stream?)")
-                info = {
-                    "path": None,
-                    "title": raw_info.get("title") or "video",
-                    "duration": duration,
-                    "channel": raw_info.get("uploader") or raw_info.get("channel") or "",
-                }
-                db.update_job(job_id, title=info["title"], stage="downloading", progress=0.16)
-                _check(ev)
-                segments, label = transcribe.fetch_online(
-                    job_id, job["url"], user_id, info=raw_info, cancel_cb=ev.is_set
-                )
-                _check(ev)
-                if segments:
-                    db.log(job_id, f"Timed transcript ready ({len(segments)} segments) — video still not downloaded")
-                    db.update_job(job_id, stage="transcribing", progress=0.46)
+                live_status = str(raw_info.get("live_status") or "").lower()
+                if live_status == "is_upcoming":
+                    raise RuntimeError("This live stream has not started yet")
+                if downloader.is_live_info(raw_info):
+                    live_capture = True
+                    info = {
+                        "path": None,
+                        "title": raw_info.get("title") or "live stream",
+                        "duration": 0,
+                        "channel": raw_info.get("uploader") or raw_info.get("channel") or "",
+                    }
+                    db.update_job(job_id, title=info["title"], stage="recording", progress=0.08)
+                    db.log(job_id, "Live stream detected — recording it before analysis…")
+                    recorded = downloader.record_live(
+                        job["url"], job_id, user_id, downloader.live_capture_seconds(),
+                        cb, cancel_cb=ev.is_set,
+                    )
+                    _check(ev)
+                    source = recorded["path"]
+                    info["path"] = source
+                    info["duration"] = recorded["duration"]
+                    db.log(job_id, f"Live segment ready ({info['duration']:.0f}s) — transcribing it locally…")
+                    segments = transcribe.transcribe(
+                        source, job_id, user_id, cb, None,
+                        cancel_cb=ev.is_set, info=raw_info, try_online=False,
+                    )
+                    analysis_media = source
+                    db.update_job(job_id, stage="transcribing", progress=0.62)
                 else:
-                    db.log(job_id, f"{label} — trying audio-only analysis", "warn")
-                    try:
-                        audio = downloader.download_audio(job["url"], job_id, user_id, cancel_cb=ev.is_set)
-                        analysis_media = audio
-                        segments = transcribe.transcribe(
-                            audio, job_id, user_id, cb, None, cancel_cb=ev.is_set,
-                            try_online=False,
-                        )
-                    except JobCanceled:
-                        raise
-                    except Exception as e:
-                        db.log(job_id, f"Audio-only analysis failed: {e}", "warn")
-                        segments = None
+                    duration = float(raw_info.get("duration") or 0)
+                    if duration <= 0:
+                        raise RuntimeError("This video reports no duration")
+                    info = {
+                        "path": None,
+                        "title": raw_info.get("title") or "video",
+                        "duration": duration,
+                        "channel": raw_info.get("uploader") or raw_info.get("channel") or "",
+                    }
+                    db.update_job(job_id, title=info["title"], stage="downloading", progress=0.16)
+                    _check(ev)
+                    segments, label = transcribe.fetch_online(
+                        job_id, job["url"], user_id, info=raw_info, cancel_cb=ev.is_set
+                    )
+                    _check(ev)
+                    if segments:
+                        db.log(job_id, f"Timed transcript ready ({len(segments)} segments) — video still not downloaded")
+                        db.update_job(job_id, stage="transcribing", progress=0.46)
+                    else:
+                        db.log(job_id, f"{label} — trying audio-only analysis", "warn")
+                        try:
+                            audio = downloader.download_audio(job["url"], job_id, user_id, cancel_cb=ev.is_set)
+                            analysis_media = audio
+                            segments = transcribe.transcribe(
+                                audio, job_id, user_id, cb, None, cancel_cb=ev.is_set,
+                                try_online=False,
+                            )
+                        except JobCanceled:
+                            raise
+                        except Exception as e:
+                            db.log(job_id, f"Audio-only analysis failed: {e}", "warn")
+                            segments = None
 
             _check(ev)
             db.update_job(job_id, stage="analyzing", progress=0.66)
@@ -251,13 +281,16 @@ def run_analyze(job_id):
             "title": info["title"],
             "channel": info.get("channel") or "",
             "url": job["url"],
-            "analysis": "captions" if (segments and not analysis_media) else "media",
+            "analysis": "live" if live_capture else ("captions" if (segments and not analysis_media) else "media"),
         })
         db.update_job(
             job_id, status="review", stage="review", progress=1.0,
             candidates=json.dumps(cands),
         )
-        db.log(job_id, f"Found {len(cands)} candidates — video not downloaded yet; render only the selected ranges")
+        if live_capture:
+            db.log(job_id, f"Found {len(cands)} candidates in the live segment — render only the selected ranges")
+        else:
+            db.log(job_id, f"Found {len(cands)} candidates — video not downloaded yet; render only the selected ranges")
     except JobCanceled:
         db.update_job(job_id, status="canceled", stage="canceled", error=None)
         db.log(job_id, "Job canceled", "warn")
@@ -281,6 +314,7 @@ def run_manual(job_id):
     try:
         merged = _options(user_id, job)
         _set_options(job_id, merged)
+        cb = _stage_cb(job_id, ev)
         try:
             start = max(0.0, float(merged.get("manual_start")))
             end = float(merged.get("manual_end"))
@@ -299,30 +333,63 @@ def run_manual(job_id):
             raw_info = downloader.probe(job["url"])
         except Exception as e:
             raise RuntimeError(f"Could not read this YouTube video: {e}") from e
-        duration = float(raw_info.get("duration") or 0)
-        if duration and end > duration + 0.5:
-            raise RuntimeError(f"End time is past the video duration ({duration:.0f}s)")
+        live_status = str(raw_info.get("live_status") or "").lower()
+        if live_status == "is_upcoming":
+            raise RuntimeError("This live stream has not started yet")
+        live = downloader.is_live_info(raw_info)
         title = raw_info.get("title") or "video"
         db.update_job(job_id, title=title)
-        segments, label = transcribe.fetch_online(
-            job_id, job["url"], user_id, info=raw_info, cancel_cb=ev.is_set
-        )
-        _check(ev)
-        if segments:
-            db.log(job_id, f"Captions ready ({label}) — captions will be burned into the render")
+        source = None
+        if live:
+            capture = min(3600, max(60, int(end) + 5))
+            db.log(job_id, "Live stream detected — recording a segment before the manual cut…")
+            db.update_job(job_id, stage="recording", progress=0.05)
+            recorded = downloader.record_live(
+                job["url"], job_id, user_id, capture, cb, cancel_cb=ev.is_set
+            )
+            _check(ev)
+            source = recorded["path"]
+            duration = recorded["duration"]
+            if end > duration + 0.5:
+                raise RuntimeError(
+                    f"The live recording ended before the requested end time ({duration:.0f}s)"
+                )
+            db.update_job(job_id, stage="transcribing", progress=0.35)
+            segments = transcribe.transcribe(
+                source, job_id, user_id, cb, None,
+                cancel_cb=ev.is_set, info=raw_info, try_online=False,
+            )
+            _check(ev)
+            if segments:
+                db.log(job_id, "Live segment transcribed — captions will be burned into the render")
+            else:
+                db.log(job_id, "Live segment has no captions — the preview will render without them", "warn")
+            db.update_job(job_id, stage="clipping", progress=0.70)
+            section = downloader.trim_local(
+                source, job_id, start, end, user_id, tag="manual"
+            )
         else:
-            db.log(job_id, f"{label} — manual preview will render without captions", "warn")
-
-        db.update_job(job_id, stage="downloading", progress=0.25)
-        section = downloader.download_section(
-            job["url"], job_id, start, end, user_id, tag="manual", cancel_cb=ev.is_set
-        )
+            duration = float(raw_info.get("duration") or 0)
+            if duration and end > duration + 0.5:
+                raise RuntimeError(f"End time is past the video duration ({duration:.0f}s)")
+            segments, label = transcribe.fetch_online(
+                job_id, job["url"], user_id, info=raw_info, cancel_cb=ev.is_set
+            )
+            _check(ev)
+            if segments:
+                db.log(job_id, f"Captions ready ({label}) — captions will be burned into the render")
+            else:
+                db.log(job_id, f"{label} — manual preview will render without captions", "warn")
+            db.update_job(job_id, stage="downloading", progress=0.25)
+            section = downloader.download_section(
+                job["url"], job_id, start, end, user_id, tag="manual", cancel_cb=ev.is_set
+            )
         _check(ev)
         candidate = {
             "start": start,
             "end": end,
             "title": "Manual cut",
-            "reason": "User-selected range downloaded directly",
+            "reason": "User-selected range from the live recording" if live else "User-selected range downloaded directly",
             "transcript": " ".join(
                 s["text"] for s in (segments or [])
                 if s["end"] > start and s["start"] < end
@@ -330,7 +397,7 @@ def run_manual(job_id):
             "score": None,
         }
         _save_meta(job_id, user_id, {
-            "path": None,
+            "path": source,
             "duration": duration,
             "segments": segments or [],
             "title": title,
@@ -339,7 +406,7 @@ def run_manual(job_id):
             "manual_section": section["path"],
             "manual_start": start,
             "manual_end": end,
-            "analysis": "manual",
+            "analysis": "live" if live else "manual",
         })
         merged.update({
             "manual": True,
@@ -352,7 +419,8 @@ def run_manual(job_id):
             job_id, status="review", stage="manual", progress=1.0,
             candidates=json.dumps([candidate]),
         )
-        db.log(job_id, f"Manual section downloaded ({section['duration']:.1f}s) — preview ready")
+        label = "Live segment" if live else "Manual section"
+        db.log(job_id, f"{label} ready ({section['duration']:.1f}s) — preview ready")
     except JobCanceled:
         db.update_job(job_id, status="canceled", stage="canceled", error=None)
         db.log(job_id, "Manual cut canceled", "warn")
@@ -449,10 +517,17 @@ def preview_candidate(job_id, idx, user_id):
         raise RuntimeError("Candidate not found")
     if end <= start + 0.5 or end - start > 180:
         raise RuntimeError("Invalid candidate range")
-    section = downloader.download_section(
-        job["url"], job_id, start, end, user_id,
-        tag=f"preview{int(idx)}", max_height=360,
-    )
+    meta = _load_meta(job_id, user_id)
+    source = meta.get("path")
+    if source and os.path.exists(source):
+        section = downloader.trim_local(
+            source, job_id, start, end, user_id, tag=f"preview{int(idx)}",
+        )
+    else:
+        section = downloader.download_section(
+            job["url"], job_id, start, end, user_id,
+            tag=f"preview{int(idx)}", max_height=360,
+        )
     return {"path": section["path"], "filename": os.path.basename(section["path"]), "duration": section["duration"]}
 
 
