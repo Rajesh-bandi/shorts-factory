@@ -17,14 +17,14 @@ chmod +x Shorts-Factory-1.4.0-x86_64.AppImage
 ## What's new
 
 - **Copy-ready AI details in History.** Click any rendered clip to open a details view with AI-written title options, a description, tags and the full local video path. Every field has a copy button, so you can publish manually without retyping anything. With auto-upload off, clips still land in History under **Not uploaded**.
-- **AI hook lines burned into the Short.** After AI finds the moments, it writes three emoji hook lines for each one. Pick a hook in review, choose **No hook line**, or use **Auto — first AI hook** when creating the job. The chosen line stays at the top of the video for the entire Short, including multi-cut and live-stream clips.
+- **AI hook lines burned into the Short.** After AI finds the moments, it writes three emoji hook lines for each one. Pick a hook in review, choose **No hook line**, or use **Auto — first AI hook** when creating the job. The chosen line stays at the top of the video for the entire Short, including live-stream clips.
 - **Hook control in render settings.** Set the default hook behavior under **Create → Render options** and **Settings → Analysis**. Auto picks the first AI line; manual leaves the choice for review; none renders without a hook.
 - **Emoji render correctly.** The desktop build ships a monochrome emoji font and passes it to ffmpeg, so hook emoji render on Linux and Windows instead of showing missing-glyph boxes.
 
 ## Also included
 
-- Live chat spike detection records through the stream when enabled, captures chat alongside the recording, and falls back to transcript/AI when chat is quiet.
-- Existing live-stream recording, manual cuts, caption studio, analytics, growth advisor and auto-upload behavior are unchanged.
+- Live chat spike detection runs automatically for live links: it watches chat, records up to five minutes before and after each surge, and caps the capture at 30 minutes. A live job reports a clear error when chat is unavailable or no spike appears.
+- Live-stream recording now always uses chat spikes; manual cuts, caption studio, analytics, growth advisor and auto-upload behavior are unchanged.
 
 ## Upgrading from v1.3.x
 

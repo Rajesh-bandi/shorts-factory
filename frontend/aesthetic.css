@@ -448,45 +448,6 @@ textarea:focus {
   }
 }
 
-/* Multi-cut sequence preview */
-.cut-sequence { display: grid; gap: 10px; }
-.cut-sequence .clip-video { max-height: 58vh; }
-.cut-sequence-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  font-size: 10px;
-  color: var(--faint);
-}
-#cutSequenceStatus { color: var(--accent); }
-.cut-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(116px, 1fr));
-  gap: 6px;
-  max-height: 22vh;
-  overflow-y: auto;
-  padding-right: 2px;
-}
-.cut-chip {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  padding: 6px 8px;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  background: var(--bg2);
-  color: var(--dim);
-  text-align: left;
-  transition: border-color .15s, color .15s, background .15s;
-}
-.cut-chip strong { font-size: 10px; font-weight: 600; }
-.cut-chip span { font-size: 9px; color: var(--faint); font-variant-numeric: tabular-nums; }
-.cut-chip:hover { border-color: var(--line2); color: var(--fg); }
-.cut-chip.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 9%, var(--bg2)); color: var(--fg); }
-.cut-chip.on span { color: var(--accent); }
-
 /* ---------- multi-user auth / account ---------- */
 body.auth-locked .app, body.auth-locked .fx { visibility: hidden; }
 .auth-gate {

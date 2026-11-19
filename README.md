@@ -176,10 +176,11 @@ retention/watch-time metrics.
 ## Pipeline
 
 1. Read metadata and English captions without downloading video.
-   For an active live stream, record it locally first. Live chat spikes record
-   until the stream ends so the heatmap covers the whole stream; set
-   `LIVE_CAPTURE_SECONDS` (30–3600, or `0` for no cap) to limit it. Without chat
-   spikes the existing `LIVE_CAPTURE_SECONDS` window is used.
+   For an active live stream, record it locally first. Live links always use
+   chat spikes: watch chat for the first surge (`LIVE_CHAT_SCAN_SECONDS`),
+   record `LIVE_SPIKE_PAD_SECONDS` before and after each surge, and stop at the
+   `LIVE_MAX_CAPTURE_SECONDS` cap. No chat or no spike fails the job with a
+   clear error.
 2. AI selects moments from the timed transcript. Long videos are map-reduced in
    overlapping windows so the end of a two-hour video is not dropped. Without
    AI, a transcript hook heuristic is used.
@@ -205,24 +206,38 @@ the local server to a public network.
 
 | Variable | Purpose |
 | --- | --- |
-| `APP_MODE` | `local` (default) or `multi` for the legacy server mode |
+| `APP_MODE` | `local` (default) or `multi` for the invite-only server mode |
+| `APP_DOMAIN` | Hostname Caddy obtains a certificate for (AWS compose) |
 | `APP_BASE_URL` | Origin used by OAuth callbacks |
 | `OAUTH_REDIRECT_URI` | Exact Google callback URL |
 | `APP_SECRET_KEY` | Encryption key for per-workspace secrets |
 | `DATA_DIR` | Database and media root |
+| `DATABASE_URL` | Postgres URL in multi mode; defaults to SQLite under `DATA_DIR` |
 | `APP_VERSION` | Current desktop version used by update checks |
 | `UPDATE_REPO` | Public GitHub repository that hosts releases |
 | `UPDATE_API_URL` | Override the releases feed (advanced/testing) |
-| `WORKER_CONCURRENCY` | Durable job workers (default 2) |
-| `COOKIE_SECURE` | Only relevant to multi-server mode |
-| `MEDIA_RETENTION_DAYS` | Optional media cleanup policy (0 = keep) |
+| `WORKER_CONCURRENCY` | Durable job workers (default 2). Keep one backend process; analysis is serialized. |
+| `MAX_USERS` | Account cap in multi mode (default 4) |
+| `REGISTRATION_INVITE_CODE` | Required after the first account; share only with invited users |
+| `COOKIE_SECURE` | Set `true` behind HTTPS in multi mode |
+| `MEDIA_RETENTION_DAYS` | Reserved cleanup setting; not enforced by the backend yet (0 = keep) |
+| `JOB_SOURCE_RETENTION_DAYS` | Reserved source-cleanup setting; not enforced yet (0 = keep) |
 | `DEFAULT_JOB_SECONDS` | Fallback ETA before enough job history exists |
-| `LIVE_CAPTURE_SECONDS` | Cap for live recording. Default 900 without chat spikes; chat spikes record until the stream ends unless set. `0` means until the stream ends. |
+| `LIVE_CHAT_SCAN_SECONDS` | Watch chat for the first spike (default 300, 30–1800) |
+| `LIVE_SPIKE_PAD_SECONDS` | Record before/after each spike (default 300, 30–900) |
+| `LIVE_MAX_CAPTURE_SECONDS` | Hard cap per live capture (default 1800, 120–7200) |
+| `LIVE_RECORD_STALL_SECONDS` | Fail when ffmpeg writes no data (default 120, 60–600) |
 
 ## Optional multi-user server
 
-The previous invite-only multi-user deployment remains available for anyone
-who wants it. It is not used by the desktop app:
+An invite-only multi-user deployment remains available for small private
+groups. The default account cap is four.
+
+For a private AWS deployment, use `docker-compose.aws.yml`, `deploy/Caddyfile`
+and the step-by-step runbook in `deploy/AWS.md`. It covers Caddy TLS, Postgres,
+EBS media storage, backups, and the four-user invite setup.
+
+For a generic Docker host:
 
 ```bash
 cp .env.example .env
@@ -233,8 +248,10 @@ docker compose up -d --build
 
 Docker Compose explicitly sets `APP_MODE=multi`. Put HTTPS in front and set
 `APP_BASE_URL`, `OAUTH_REDIRECT_URI` and `COOKIE_SECURE=true` to match the
-public origin. See `.env.example` for the full list. Never run the default
-local mode on a public interface: it is intentionally unauthenticated.
+public origin. Set `REGISTRATION_INVITE_CODE` before inviting anyone and
+bootstrap the owner before exposing the host. See `.env.example` for the full
+list. Never run the default local mode on a public interface: it is
+intentionally unauthenticated.
 
 ## Notes and limits
 
@@ -244,7 +261,10 @@ local mode on a public interface: it is intentionally unauthenticated.
   development machine, GPU acceleration works through the existing Python
   environment; a GPU-enabled frozen build requires bundling the matching CUDA
   runtime.
-- No automatic publishing exists by design.
+- Auto-upload is opt-in and requires each user's own Google OAuth client;
+  manual cuts and batch jobs stay local.
+- Live links always use chat-spike detection. The chat toggle in Settings only
+  affects normal videos.
 - Updates are checked against public GitHub Releases. Windows and Linux AppImage
   builds can install them in place; the Windows installer is currently
   unsigned.

@@ -8,11 +8,12 @@
 <meta name="color-scheme" content="dark light">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <script src="theme.js?v=20261115-13"></script>
-    <link rel="stylesheet" href="style.css?v=20261119-1">
+    <link rel="stylesheet" href="style.css?v=20261119-4">
     <link rel="stylesheet" href="aesthetic.css?v=20261115-3">
     <link rel="stylesheet" href="vice.css?v=20261115-19">
 </head>
 <body class="auth-locked">
+<a class="skip-link" href="#mainContent">Skip to content</a>
 <div class="boot-splash" id="bootSplash" role="status" aria-label="Starting Shorts Factory">
   <div class="boot-mark"><span>▶</span></div>
   <div class="boot-word">shorts <em>factory</em></div>
@@ -41,9 +42,9 @@
     <div class="eyebrow">private workspace</div>
     <h1>Shorts <span class="grad-text">Factory</span></h1>
     <p class="auth-sub">Sign in to your own channels, keys and clip library.</p>
-    <div class="auth-tabs" id="authTabs">
-      <button class="tab active" data-auth-tab="login">Sign in</button>
-      <button class="tab" data-auth-tab="register">Create account</button>
+    <div class="auth-tabs" id="authTabs" role="group" aria-label="Account mode">
+      <button class="tab active" data-auth-tab="login" aria-pressed="true">Sign in</button>
+      <button class="tab" data-auth-tab="register" aria-pressed="false">Create account</button>
     </div>
     <form class="auth-form" id="authForm" autocomplete="on">
       <div class="field" id="authNameField" hidden><label for="authName">Name</label><input id="authName" type="text" autocomplete="name" placeholder="Your name"></div>
@@ -80,7 +81,7 @@
         <span class="brand-mark"><span>▶</span></span>
         <span class="brand-text"><strong>shorts <em>factory</em></strong><small>long → vertical</small></span>
       </button>
-      <button class="icon-btn rail-collapse" id="railCollapse" aria-label="Collapse sidebar"><span data-icon="panel"></span></button>
+      <button class="icon-btn rail-collapse" id="railCollapse" aria-label="Collapse sidebar" aria-controls="rail" aria-expanded="true"><span data-icon="panel"></span></button>
     </div>
 
     <nav class="nav" id="nav" aria-label="Main">
@@ -111,7 +112,7 @@
 
   <main class="main">
     <header class="topbar">
-      <button class="icon-btn only-mobile" id="railOpen" aria-label="Open menu"><span data-icon="menu"></span></button>
+      <button class="icon-btn only-mobile" id="railOpen" aria-label="Open menu" aria-controls="rail" aria-expanded="false"><span data-icon="menu"></span></button>
       <div class="crumbs"><span class="crumb-muted">ytm</span><span class="crumb-sep">/</span><span id="crumbView">dashboard</span></div>
       <div class="top-actions">
         <button class="cmd-trigger" id="cmdTrigger" aria-label="Open command palette">
@@ -120,15 +121,15 @@
         <div class="account-chip" id="accountChip" title="Signed-in account">
           <span class="account-avatar" id="accountAvatar">·</span>
           <span class="account-copy"><strong id="accountName">Account</strong><small id="accountEmail"></small></span>
-          <button class="icon-btn" id="btnLogout" title="Sign out"><span data-icon="external"></span></button>
+          <button class="icon-btn" id="btnLogout" title="Sign out" aria-label="Sign out"><span data-icon="external"></span></button>
         </div>
-        <button class="icon-btn" id="btnMode" title="Toggle light / dark"><span data-icon="sun"></span></button>
-        <button class="icon-btn" id="btnTweaks" title="Appearance"><span data-icon="palette"></span></button>
-        <button class="icon-btn" id="btnHelp" title="Keyboard shortcuts"><span data-icon="keyboard"></span></button>
+        <button class="icon-btn" id="btnMode" title="Toggle light / dark" aria-label="Toggle light / dark"><span data-icon="sun"></span></button>
+        <button class="icon-btn" id="btnTweaks" title="Appearance" aria-label="Appearance"><span data-icon="palette"></span></button>
+        <button class="icon-btn" id="btnHelp" title="Keyboard shortcuts" aria-label="Keyboard shortcuts"><span data-icon="keyboard"></span></button>
       </div>
     </header>
 
-    <div class="viewport">
+    <div class="viewport" id="mainContent" tabindex="-1">
 
       <!-- ============ DASHBOARD ============ -->
       <section class="view" id="view-dashboard" data-title="Dashboard">
@@ -214,36 +215,56 @@
           </div>
         </div>
 
-        <div class="create-mode tabs" id="createModeTabs" role="tablist">
-          <button class="tab active" data-create-mode="auto">AI clips</button>
-          <button class="tab" data-create-mode="manual">Manual cut</button>
-          <button class="tab" data-create-mode="batch">Batch queue</button>
+        <div class="create-mode tabs" id="createModeTabs" role="group" aria-label="Create mode">
+          <button class="tab active" data-create-mode="auto" aria-pressed="true">AI clips</button>
+          <button class="tab" data-create-mode="manual" aria-pressed="false">Manual cut</button>
+          <button class="tab" data-create-mode="batch" aria-pressed="false">Batch queue</button>
         </div>
 
         <div class="composer spot">
+          <div class="create-steps" id="createSteps" aria-label="Create steps">
+            <span class="create-step is-active" data-step="1" aria-current="step"><b>01</b> Source</span>
+            <span class="create-step" data-step="2"><b>02</b> Style &amp; render</span>
+            <span class="create-step" data-step="3"><b>03</b> Review</span>
+          </div>
           <div class="composer-top">
             <div class="composer-label"><span data-icon="link"></span> source video</div>
-            <div class="composer-badges"><span class="pill muted">YouTube</span><span class="pill muted">transcript first</span><span class="pill muted">live streams</span><span class="pill muted">up to 1080p</span></div>
+            <div class="composer-badges"><span class="pill muted">YouTube</span><span class="pill muted">transcript first</span><span class="pill muted">live chat auto</span><span class="pill muted">up to 1080p</span></div>
           </div>
-          <div class="url-row">
-            <div class="url-input">
-              <span class="url-ico" data-icon="youtube"></span>
-              <input id="urlInput" type="url" placeholder="https://youtube.com/watch?v=…" spellcheck="false" autocomplete="off">
-              <button class="icon-btn paste-btn" id="btnPaste" title="Paste from clipboard"><span data-icon="clipboard"></span></button>
+          <div id="createSourceBody">
+            <div class="url-row">
+              <div class="url-input">
+                <span class="url-ico" data-icon="youtube"></span>
+                <input id="urlInput" type="url" placeholder="https://youtube.com/watch?v=…" spellcheck="false" autocomplete="off">
+                <button class="icon-btn paste-btn" id="btnPaste" title="Paste from clipboard" aria-label="Paste from clipboard"><span data-icon="clipboard"></span></button>
+              </div>
+              <button class="btn primary lg" id="btnAnalyze"><span id="btnAnalyzeLabel">Find moments</span><span data-icon="arrow-right"></span></button>
             </div>
-            <button class="btn primary lg" id="btnAnalyze"><span id="btnAnalyzeLabel">Find moments</span><span data-icon="arrow-right"></span></button>
+            <p class="hint" style="margin:-4px 0 14px">Live stream? Chat spikes are detected automatically — the app records only around each surge (up to 5 minutes before and after), never the whole stream. Manual timestamps for a live link start at the beginning of the recording.</p>
+            <p class="inline-error" id="urlHint" hidden></p>
           </div>
-          <p class="hint" style="margin:-4px 0 14px">Live stream? The app records up to 15 minutes first, then finds clips from that recording. Manual timestamps for a live link start at the beginning of the recording.</p>
-          <p class="inline-error" id="urlHint" hidden></p>
 
-          <div class="composer-opts">
-            <div class="count-picker" id="countPicker">
+          <div class="source-summary" id="sourceSummary" hidden>
+            <div class="source-summary-info">
+              <span class="source-summary-label">source</span>
+              <span class="source-summary-url" id="sourceSummaryUrl"></span>
+            </div>
+            <button class="btn ghost sm" id="btnBackSource" type="button"><span data-icon="arrow-left"></span>Change link</button>
+          </div>
+
+          <div class="create-setup" id="createSetupStep" role="region" aria-labelledby="createSetupTitle" hidden>
+            <div class="setup-head">
+              <div><div class="eyebrow" id="setupEyebrow">step 2</div><h3 id="createSetupTitle" tabindex="-1">Shape your Shorts</h3></div>
+              <span class="pill muted" id="setupModePill">AI picks the moments</span>
+            </div>
+            <div class="composer-opts">
+            <div class="count-picker" id="countPicker" role="group" aria-label="Number of clips">
               <span class="opt-label">clips</span>
-              <button class="chip" data-count="1">1</button>
-              <button class="chip on" data-count="2">2</button>
-              <button class="chip" data-count="3">3</button>
-              <button class="chip" data-count="4">4</button>
-              <button class="chip" data-count="5">5</button>
+              <button class="chip" data-count="1" aria-pressed="false">1</button>
+              <button class="chip on" data-count="2" aria-pressed="true">2</button>
+              <button class="chip" data-count="3" aria-pressed="false">3</button>
+              <button class="chip" data-count="4" aria-pressed="false">4</button>
+              <button class="chip" data-count="5" aria-pressed="false">5</button>
             </div>
             <div class="manual-times" id="manualTimes" hidden>
               <div class="time-input"><label for="manualStart">Start</label><input id="manualStart" type="text" inputmode="decimal" placeholder="0:00" autocomplete="off"></div>
@@ -251,21 +272,16 @@
               <div class="time-input"><label for="manualEnd">End</label><input id="manualEnd" type="text" inputmode="decimal" placeholder="0:45" autocomplete="off"></div>
               <span class="hint">Live or normal · mm:ss or seconds · max 3 min</span>
             </div>
-            <details class="advanced" id="createAdvanced" open>
-              <summary><span data-icon="sliders"></span> Render options <span class="chev" data-icon="chevron-down"></span></summary>
+            <details class="advanced" id="createAdvanced">
+              <summary><span data-icon="sliders"></span> Render options &amp; captions <span class="chev" data-icon="chevron-down"></span></summary>
               <div class="adv-grid">
                 <div class="field"><label for="createPrivacy">Privacy</label><select id="createPrivacy"><option value="public">Public</option><option value="unlisted">Unlisted</option><option value="private">Private</option></select></div>
                 <div class="field" id="durationField"><label for="createDuration">Clip length</label><select id="createDuration"><option value="30">30 seconds</option><option value="45" selected>45 seconds</option><option value="60">60 seconds</option><option value="90">90 seconds</option></select></div>
-                <div class="field" id="layoutField"><label for="createMode">Short layout</label><select id="createMode"><option value="separate">Separate shorts</option><option value="multi_cut">One short · multiple cuts</option></select><p class="hint">Multi-cut asks the AI to turn several transcript moments into one story.</p></div>
                 <div class="field" id="hookField"><label for="createHookMode">Hook line</label><select id="createHookMode"><option value="auto">Auto — first AI hook</option><option value="manual">Choose in review</option><option value="none">No hook line</option></select><p class="hint">AI writes three emoji hook lines after it finds the moments. The chosen line stays at the top for the whole Short. Auto picks the first one; you can still change it in review.</p></div>
                 <div class="field"><label for="createReframe">Reframe</label><select id="createReframe"><option value="crop">Center crop</option><option value="blur">Blurred backdrop</option></select></div>
                 <div class="field field-switch" id="autoUploadField">
                   <label class="switch"><input type="checkbox" id="createAutoUpload"><span class="sw"></span><span>Auto-upload after render</span></label>
                   <p class="hint">Normal AI clips only — batch and manual cuts always stay local. The AI writes each title, description and tags before uploading to your connected channel.</p>
-                </div>
-                <div class="field field-switch" id="chatSpikesField">
-                  <label class="switch"><input type="checkbox" id="createChatSpikes" checked><span class="sw"></span><span>Live chat spikes</span></label>
-                  <p class="hint">Live streams only. Records until the stream ends, captures chat alongside it, and cuts the moments where the chat rate surges across the whole live video. Set LIVE_CAPTURE_SECONDS to cap a very long stream. Normal videos keep using transcript/AI and manual cuts.</p>
                 </div>
                 <div class="publish-note"><span data-icon="info"></span><span>Every render is saved in <strong>History</strong>. With auto-upload off, clips stay there under <strong>Not uploaded</strong> until you publish them.</span></div>
               </div>
@@ -283,19 +299,19 @@
                   <div class="caption-controls">
                     <div class="field">
                       <label>Preset</label>
-                      <div class="cap-presets" id="capPresets">
-                        <button class="cap-preset" data-preset="gruvbox">Gruvbox</button>
-                        <button class="cap-preset" data-preset="omarchy">Omarchy green</button>
-                        <button class="cap-preset" data-preset="classic">Classic</button>
-                        <button class="cap-preset" data-preset="boxed">Boxed</button>
-                        <button class="cap-preset" data-preset="clean">Clean</button>
-                        <button class="cap-preset" data-preset="neon">Neon</button>
-                        <button class="cap-preset" data-preset="outline">Outline</button>
-                        <button class="cap-preset" data-preset="impact">Impact</button>
-                        <button class="cap-preset" data-preset="shadow">Shadow</button>
-                        <button class="cap-preset" data-preset="karaoke">Karaoke</button>
-                        <button class="cap-preset" data-preset="minimal">Minimal</button>
-                        <button class="cap-preset" data-preset="terminal">Terminal</button>
+                      <div class="cap-presets" id="capPresets" role="group" aria-label="Caption preset">
+                        <button class="cap-preset" data-preset="gruvbox" aria-pressed="true">Gruvbox</button>
+                        <button class="cap-preset" data-preset="omarchy" aria-pressed="false">Omarchy green</button>
+                        <button class="cap-preset" data-preset="classic" aria-pressed="false">Classic</button>
+                        <button class="cap-preset" data-preset="boxed" aria-pressed="false">Boxed</button>
+                        <button class="cap-preset" data-preset="clean" aria-pressed="false">Clean</button>
+                        <button class="cap-preset" data-preset="neon" aria-pressed="false">Neon</button>
+                        <button class="cap-preset" data-preset="outline" aria-pressed="false">Outline</button>
+                        <button class="cap-preset" data-preset="impact" aria-pressed="false">Impact</button>
+                        <button class="cap-preset" data-preset="shadow" aria-pressed="false">Shadow</button>
+                        <button class="cap-preset" data-preset="karaoke" aria-pressed="false">Karaoke</button>
+                        <button class="cap-preset" data-preset="minimal" aria-pressed="false">Minimal</button>
+                        <button class="cap-preset" data-preset="terminal" aria-pressed="false">Terminal</button>
                       </div>
                       <input type="hidden" id="caption_preset" value="gruvbox">
                     </div>
@@ -306,10 +322,10 @@
                     <div class="row">
                       <div class="field">
                         <label>Position</label>
-                        <div class="seg" id="capPosition">
-                          <button data-pos="top">Top</button>
-                          <button data-pos="center">Center</button>
-                          <button data-pos="bottom" class="on">Bottom</button>
+                        <div class="seg" id="capPosition" role="group" aria-label="Caption position">
+                          <button data-pos="top" aria-pressed="false">Top</button>
+                          <button data-pos="center" aria-pressed="false">Center</button>
+                          <button data-pos="bottom" class="on" aria-pressed="true">Bottom</button>
                         </div>
                         <input type="hidden" id="caption_position" value="bottom">
                       </div>
@@ -317,15 +333,15 @@
                     </div>
                     <div class="field">
                       <label>Colour</label>
-                      <div class="swatches" id="capColors">
-                        <button class="swatch" data-color="#ffffff" style="--sw:#ffffff" title="White"></button>
-                        <button class="swatch" data-color="#fabd2f" style="--sw:#fabd2f" title="Gruvbox yellow"></button>
-                        <button class="swatch" data-color="#8ec07c" style="--sw:#8ec07c" title="Aqua"></button>
-                        <button class="swatch" data-color="#b8bb26" style="--sw:#b8bb26" title="Omarchy green"></button>
-                        <button class="swatch" data-color="#fbf1c7" style="--sw:#fbf1c7" title="Cream"></button>
-                        <button class="swatch" data-color="#fe8019" style="--sw:#fe8019" title="Orange"></button>
-                        <button class="swatch" data-color="#fb4934" style="--sw:#fb4934" title="Red"></button>
-                        <label class="swatch custom" title="Custom colour"><input type="color" id="caption_color" value="#fabd2f"></label>
+                      <div class="swatches" id="capColors" role="group" aria-label="Caption colour">
+                        <button class="swatch" data-color="#ffffff" style="--sw:#ffffff" title="White" aria-label="White" aria-pressed="false"></button>
+                        <button class="swatch" data-color="#fabd2f" style="--sw:#fabd2f" title="Gruvbox yellow" aria-label="Gruvbox yellow" aria-pressed="true"></button>
+                        <button class="swatch" data-color="#8ec07c" style="--sw:#8ec07c" title="Aqua" aria-label="Aqua" aria-pressed="false"></button>
+                        <button class="swatch" data-color="#b8bb26" style="--sw:#b8bb26" title="Omarchy green" aria-label="Omarchy green" aria-pressed="false"></button>
+                        <button class="swatch" data-color="#fbf1c7" style="--sw:#fbf1c7" title="Cream" aria-label="Cream" aria-pressed="false"></button>
+                        <button class="swatch" data-color="#fe8019" style="--sw:#fe8019" title="Orange" aria-label="Orange" aria-pressed="false"></button>
+                        <button class="swatch" data-color="#fb4934" style="--sw:#fb4934" title="Red" aria-label="Red" aria-pressed="false"></button>
+                        <label class="swatch custom" title="Custom colour" aria-label="Custom caption colour"><input type="color" id="caption_color" value="#fabd2f"></label>
                       </div>
                     </div>
                     <div class="cap-toggles">
@@ -338,6 +354,12 @@
                 </div>
               </div>
             </details>
+            </div>
+            <div class="create-actions" id="createWizardActions">
+              <button class="btn ghost" id="btnBackSource2" type="button"><span data-icon="arrow-left"></span>Back</button>
+              <span class="hint">Transcript first. Video is downloaded only for the moments you keep.</span>
+              <button class="btn primary lg" id="btnStartAnalysis" type="button"><span data-icon="wand"></span>Start analysis</button>
+            </div>
           </div>
         </div>
 
@@ -406,13 +428,13 @@
           </div>
         </div>
         <div class="toolbar">
-          <div class="search-box"><span data-icon="search"></span><input id="jobSearch" placeholder="Search jobs…" autocomplete="off"></div>
-          <div class="filters" id="jobFilters">
-            <button class="filter on" data-filter="all">All</button>
-            <button class="filter" data-filter="active">Active</button>
-            <button class="filter" data-filter="review">Review</button>
-            <button class="filter" data-filter="done">Done</button>
-            <button class="filter" data-filter="error">Failed</button>
+          <div class="search-box"><span data-icon="search"></span><input id="jobSearch" placeholder="Search jobs…" autocomplete="off" aria-label="Search jobs"></div>
+          <div class="filters" id="jobFilters" role="group" aria-label="Filter jobs">
+            <button class="filter on" data-filter="all" aria-pressed="true">All</button>
+            <button class="filter" data-filter="active" aria-pressed="false">Active</button>
+            <button class="filter" data-filter="review" aria-pressed="false">Review</button>
+            <button class="filter" data-filter="done" aria-pressed="false">Done</button>
+            <button class="filter" data-filter="error" aria-pressed="false">Failed</button>
           </div>
         </div>
         <div id="jobList"></div>
@@ -433,12 +455,12 @@
           </div>
         </div>
         <div class="toolbar">
-          <div class="search-box"><span data-icon="search"></span><input id="historySearch" placeholder="Search generated clips…" autocomplete="off"></div>
+          <div class="search-box"><span data-icon="search"></span><input id="historySearch" placeholder="Search generated clips…" autocomplete="off" aria-label="Search generated clips"></div>
           <div class="history-tools">
-            <div class="filters" id="historyFilters">
-              <button class="filter on" data-history-filter="all">All</button>
-              <button class="filter" data-history-filter="local">Not uploaded</button>
-              <button class="filter" data-history-filter="uploaded">Uploaded</button>
+            <div class="filters" id="historyFilters" role="group" aria-label="Filter history">
+              <button class="filter on" data-history-filter="all" aria-pressed="true">All</button>
+              <button class="filter" data-history-filter="local" aria-pressed="false">Not uploaded</button>
+              <button class="filter" data-history-filter="uploaded" aria-pressed="false">Uploaded</button>
             </div>
             <button class="btn ghost sm" id="historySelectAll"><span data-icon="check"></span>Select all</button>
             <span class="pill muted" id="historyCount">0 clips</span>
@@ -492,16 +514,16 @@
         <div class="card table-card">
           <div class="card-head">
             <div><div class="eyebrow">library</div><h3>Tracked videos</h3></div>
-            <div class="search-box compact"><span data-icon="search"></span><input id="vidSearch" placeholder="Filter videos…" autocomplete="off"></div>
+            <div class="search-box compact"><span data-icon="search"></span><input id="vidSearch" placeholder="Filter videos…" autocomplete="off" aria-label="Filter tracked videos"></div>
           </div>
           <div class="table-wrap">
             <table>
               <thead><tr>
-                <th>Title</th>
-                <th class="num-c sortable" data-sort="views">Views</th>
-                <th class="num-c sortable" data-sort="likes">Likes</th>
-                <th class="num-c sortable" data-sort="comments">Comments</th>
-                <th class="sortable" data-sort="published_at">Published</th>
+                <th scope="col">Title</th>
+                <th class="num-c sortable" data-sort="views" scope="col" aria-sort="none"><button type="button" class="sort-btn">Views</button></th>
+                <th class="num-c sortable" data-sort="likes" scope="col" aria-sort="none"><button type="button" class="sort-btn">Likes</button></th>
+                <th class="num-c sortable" data-sort="comments" scope="col" aria-sort="none"><button type="button" class="sort-btn">Comments</button></th>
+                <th class="sortable" data-sort="published_at" scope="col" aria-sort="none"><button type="button" class="sort-btn">Published</button></th>
               </tr></thead>
               <tbody id="allVideos"></tbody>
             </table>
@@ -520,14 +542,14 @@
           <div class="head-actions"><button class="btn ghost" id="btnAppearance"><span data-icon="palette"></span>Appearance</button></div>
         </div>
 
-        <div class="tabs" id="settingsTabs" role="tablist">
-          <button class="tab active" data-tab="channel">Channel</button>
-          <button class="tab" data-tab="ai">AI</button>
-          <button class="tab" data-tab="pipeline">Pipeline</button>
-          <button class="tab" data-tab="system">System</button>
+        <div class="tabs" id="settingsTabs" role="tablist" aria-label="Settings sections">
+          <button class="tab active" id="settingsTab-channel" data-tab="channel" role="tab" aria-selected="true" aria-controls="tab-channel" tabindex="0">Channel</button>
+          <button class="tab" id="settingsTab-ai" data-tab="ai" role="tab" aria-selected="false" aria-controls="tab-ai" tabindex="-1">AI</button>
+          <button class="tab" id="settingsTab-pipeline" data-tab="pipeline" role="tab" aria-selected="false" aria-controls="tab-pipeline" tabindex="-1">Pipeline</button>
+          <button class="tab" id="settingsTab-system" data-tab="system" role="tab" aria-selected="false" aria-controls="tab-system" tabindex="-1">System</button>
         </div>
 
-        <div class="tab-panel active" id="tab-channel">
+        <div class="tab-panel active" id="tab-channel" role="tabpanel" aria-labelledby="settingsTab-channel">
           <div class="conn-banner" id="ytBanner">
             <span class="dot" id="ytDot"></span>
             <div class="cb-txt"><div class="cb-title" id="ytTitle">YouTube not connected</div><div class="cb-sub" id="ytSub">Connect a channel for auto-upload and analytics</div></div>
@@ -555,7 +577,7 @@
           </div>
         </div>
 
-        <div class="tab-panel" id="tab-ai">
+        <div class="tab-panel" id="tab-ai" role="tabpanel" aria-labelledby="settingsTab-ai">
           <div class="card">
             <div class="card-head">
               <div><div class="eyebrow">cloud AI</div><h3>AI provider</h3></div>
@@ -574,13 +596,13 @@
           </div>
         </div>
 
-        <div class="tab-panel" id="tab-pipeline">
+        <div class="tab-panel" id="tab-pipeline" role="tabpanel" aria-labelledby="settingsTab-pipeline">
           <div class="settings-grid">
             <div class="card">
               <div class="card-head"><div><div class="eyebrow">transcription</div><h3>Analysis</h3></div></div>
               <div class="field"><label for="whisper_model">Whisper model</label><select id="whisper_model"><option value="tiny">tiny — fastest</option><option value="base">base</option><option value="small">small — recommended</option><option value="medium">medium</option><option value="large-v3">large-v3 — slowest, best</option></select><p class="hint">First run downloads the model.</p></div>
               <div class="field"><label class="switch"><input id="gpu_enabled" type="checkbox" checked><span class="sw"></span><span>Use GPU acceleration</span></label><p class="hint">CUDA for transcription and NVENC for rendering when available. Falls back to CPU automatically.</p></div>
-              <div class="field"><label class="switch"><input id="chat_highlights" type="checkbox" checked><span class="sw"></span><span>Live chat spikes</span></label><p class="hint">Live only. Record until the stream ends, capture chat alongside it, and cut where messages surge across the whole stream. Set LIVE_CAPTURE_SECONDS to cap a long stream. Normal video comments have no video-time position.</p></div>
+              <div class="field"><label class="switch"><input id="chat_highlights" type="checkbox" checked><span class="sw"></span><span>Chat spikes on normal videos</span></label><p class="hint">Live streams always use chat-spike detection automatically. For normal videos, use chat replay when available to favour moments viewers reacted to. Video comments have no video-time position.</p></div>
               <div class="field"><label for="hook_mode">Default hook line</label><select id="hook_mode"><option value="auto">Auto — first AI hook</option><option value="manual">Choose in review</option><option value="none">No hook line</option></select><p class="hint">AI writes three emoji hook lines for each selected moment. The hook stays at the top of the rendered Short; auto uses the first line.</p></div>
               <div class="field"><label for="short_length">Target clip length <span class="range-out" id="lengthOut">45s</span></label><input id="short_length" type="range" min="20" max="90" step="5" value="45"></div>
             </div>
@@ -602,7 +624,7 @@
           </div>
         </div>
 
-        <div class="tab-panel" id="tab-system">
+        <div class="tab-panel" id="tab-system" role="tabpanel" aria-labelledby="settingsTab-system">
           <div class="card">
             <div class="card-head"><div><div class="eyebrow">diagnostics</div><h3>System health</h3></div><button class="btn ghost sm" id="btnHealth"><span data-icon="refresh"></span>Re-check</button></div>
             <div class="health-grid" id="healthGrid"><div class="skeleton sk-line"></div><div class="skeleton sk-line"></div></div>
@@ -621,9 +643,9 @@
 </div>
 
 <!-- ============ APPEARANCE ============ -->
-<aside class="tweaks" id="tweaks" aria-hidden="true" aria-label="Appearance">
+<aside class="tweaks" id="tweaks" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="twTitle">
   <header class="tw-head">
-    <div><div class="eyebrow">personalize</div><h3>Appearance</h3></div>
+    <div><div class="eyebrow">personalize</div><h3 id="twTitle">Appearance</h3></div>
     <button class="icon-btn" id="twClose" aria-label="Close"><span data-icon="x"></span></button>
   </header>
   <div class="tw-scroll">
@@ -672,24 +694,24 @@
 <!-- ============ COMMAND PALETTE ============ -->
 <div class="overlay cmdk-overlay" id="cmdOverlay" hidden>
   <div class="cmdk" role="dialog" aria-modal="true" aria-label="Command palette">
-    <div class="cmdk-top"><span data-icon="search"></span><input id="cmdInput" placeholder="Jump to a page, run a command…" autocomplete="off" spellcheck="false"><kbd>esc</kbd></div>
-    <div class="cmdk-list" id="cmdList"></div>
+    <div class="cmdk-top"><span data-icon="search"></span><input id="cmdInput" placeholder="Jump to a page, run a command…" autocomplete="off" spellcheck="false" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="cmdList" aria-label="Search commands"><kbd>esc</kbd></div>
+    <div class="cmdk-list" id="cmdList" role="listbox" aria-label="Commands"></div>
     <div class="cmdk-foot"><span><kbd>↑</kbd><kbd>↓</kbd> navigate</span><span><kbd>↵</kbd> run</span><span><kbd>1</kbd>–<kbd>6</kbd> views</span></div>
   </div>
 </div>
 
 <!-- ============ MODAL ============ -->
 <div class="overlay" id="modalOverlay" hidden>
-  <div class="modal" id="modalBox" role="dialog" aria-modal="true">
+  <div class="modal" id="modalBox" role="dialog" aria-modal="true" aria-labelledby="modalTitle" aria-describedby="modalBody">
     <header class="modal-head"><h3 id="modalTitle"></h3><button class="icon-btn" id="modalClose" aria-label="Close"><span data-icon="x"></span></button></header>
     <div class="modal-body" id="modalBody"></div>
     <footer class="modal-foot" id="modalFoot"></footer>
   </div>
 </div>
 
-<div class="toasts" id="toasts" aria-live="polite"></div>
+<div class="toasts" id="toasts" aria-live="polite" aria-relevant="additions" aria-atomic="false"></div>
 <canvas id="confetti" aria-hidden="true"></canvas>
 
-<script src="app.js?v=20261119-1"></script>
+<script type="module" src="app.js?v=20261119-2"></script>
 </body>
 </html>

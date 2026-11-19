@@ -1,0 +1,65 @@
+# Production AWS stack: docker compose -f docker-compose.aws.yml up -d --build
+# Requires the EBS volume mounted at /mnt/shorts. See deploy/AWS.md.
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-shorts}
+      POSTGRES_USER: ${POSTGRES_USER:-shorts}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - /mnt/shorts/db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    logging: &small-logs
+      driver: json-file
+      options: { max-size: "20m", max-file: "5" }
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      APP_MODE: multi
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL in .env}
+      DATA_DIR: /data
+      SERVE_FRONTEND: "false"
+      FORWARDED_ALLOW_IPS: "*"
+      HF_HOME: /data/.cache
+    volumes:
+      - /mnt/shorts/data:/data
+    depends_on:
+      db:
+        condition: service_healthy
+    logging: *small-logs
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    logging: *small-logs
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?set APP_DOMAIN in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - /mnt/shorts/caddy/data:/data
+      - /mnt/shorts/caddy/config:/config
+    depends_on:
+      - frontend
+    logging: *small-logs

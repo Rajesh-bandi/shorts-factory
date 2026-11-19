@@ -22,7 +22,6 @@ KEYS = [
     "gpu_enabled",
     "chat_highlights",
     "short_length",
-    "clip_mode",
     "clip_duration",
     "hook_mode",
     "auto_upload",

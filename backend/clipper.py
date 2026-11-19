@@ -622,95 +622,6 @@ def _make_thumb(clip_path, thumb_path, duration):
         return None
 
 
-def _render_multicut(video_path, cand, cuts, index, job_id, segments, stage_cb, options, should_cancel, user_id):
-    """Render each AI-selected cut, then concat them into one Short."""
-    out_path = os.path.join(user_media_dir(user_id), f"job{job_id}_short{index}.mp4")
-    thumb_path = os.path.join(user_media_dir(user_id), f"job{job_id}_short{index}.jpg")
-    list_path = os.path.join(user_media_dir(user_id), f"job{job_id}_short{index}_concat.txt")
-    parts = []
-    try:
-        for n, cut in enumerate(cuts):
-            if should_cancel and should_cancel():
-                raise RuntimeError("canceled")
-            part = dict(cand)
-            part.pop("cuts", None)
-            part["start"] = float(cut["start"])
-            part["end"] = float(cut["end"])
-            part["title"] = f"{cand.get('title', 'Short')} · cut {n + 1}"
-            result = make_clip(
-                video_path, part, index * 100 + n, job_id, segments, stage_cb,
-                options, should_cancel, user_id=user_id,
-            )
-            parts.append(result["path"])
-        with open(list_path, "w") as f:
-            for path in parts:
-                f.write(f"file '{path}'\n")
-        total = sum(max(0.0, float(c["end"]) - float(c["start"])) for c in cuts)
-        # Re-encode the assembled Short instead of stream-copying it. Copying
-        # preserved inconsistent timestamp/audio tails from independently
-        # encoded cuts, which could make players show the wrong duration.
-        crf = QUALITY.get(str((options or {}).get("quality", "balanced")), 21)
-        gpu_used = bool((options or {}).get("gpu_enabled") and gpu.nvenc_available())
-        _run_video_encode(
-            ["ffmpeg", "-y", "-v", "error", "-f", "concat", "-safe", "0",
-             "-i", list_path,
-             "-t", f"{total:.3f}", "-r", "30",
-             "-af", "apad",
-             *_video_codec_args(options or {}, crf),
-             "-c:a", "aac", "-b:a", "160k", "-ar", "44100",
-             "-shortest", "-movflags", "+faststart", out_path],
-            crf, gpu_used, should_cancel=should_cancel,
-        )
-        return {"path": out_path, "thumb": _make_thumb(out_path, thumb_path, total)}
-    finally:
-        for path in parts:
-            for suffix in (".mp4", ".jpg", ".srt", ".ass"):
-                try:
-                    os.remove(path.rsplit(".", 1)[0] + suffix)
-                except OSError:
-                    pass
-        for path in (list_path,):
-            try:
-                os.remove(path)
-            except OSError:
-                pass
-
-
-def _concat_rendered_parts(parts, cand, index, job_id, total, options, should_cancel, user_id):
-    """Assemble rendered vertical parts into the final Short."""
-    out_path = os.path.join(user_media_dir(user_id), f"job{job_id}_short{index}.mp4")
-    thumb_path = os.path.join(user_media_dir(user_id), f"job{job_id}_short{index}.jpg")
-    list_path = os.path.join(user_media_dir(user_id), f"job{job_id}_short{index}_concat.txt")
-    try:
-        with open(list_path, "w") as f:
-            for path in parts:
-                f.write(f"file '{path}'\n")
-        crf = QUALITY.get(str((options or {}).get("quality", "balanced")), 21)
-        gpu_used = bool((options or {}).get("gpu_enabled") and gpu.nvenc_available())
-        _run_video_encode(
-            ["ffmpeg", "-y", "-v", "error", "-f", "concat", "-safe", "0",
-             "-i", list_path,
-             "-t", f"{total:.3f}", "-r", "30",
-             "-af", "apad",
-             *_video_codec_args(options or {}, crf),
-             "-c:a", "aac", "-b:a", "160k", "-ar", "44100",
-             "-shortest", "-movflags", "+faststart", out_path],
-            crf, gpu_used, should_cancel=should_cancel,
-        )
-        return {"path": out_path, "thumb": _make_thumb(out_path, thumb_path, total)}
-    finally:
-        for path in parts:
-            for suffix in (".mp4", ".jpg", ".srt", ".ass"):
-                try:
-                    os.remove(path.rsplit(".", 1)[0] + suffix)
-                except OSError:
-                    pass
-        try:
-            os.remove(list_path)
-        except OSError:
-            pass
-
-
 def _shift_segments(segments, offset, duration):
     out = []
     for seg in segments or []:
@@ -729,80 +640,32 @@ def _shift_segments(segments, offset, duration):
     return out
 
 
-def render_sections(sections, cand, index, job_id, segments, stage_cb, options=None, should_cancel=None, user_id=0):
-    """Render one Short from downloaded source ranges.
+def render_section(section, cand, index, job_id, segments, stage_cb, options=None, should_cancel=None, user_id=0):
+    """Render one Short from a downloaded source range.
 
-    Each section starts at 0 locally. Captions are shifted by the section's
+    The section starts at 0 locally. Captions are shifted by the section's
     original start so a section downloaded from anywhere still lines up.
     """
     opts = options or {}
-    if not sections:
-        raise RuntimeError("No source sections were downloaded")
-    if len(sections) == 1:
-        section = sections[0]
-        duration = max(1.0, float(section.get("duration") or (section["end"] - section["start"])))
-        local = {
-            "start": 0.0,
-            "end": duration,
-            "title": cand.get("title") or "Short",
-            "reason": cand.get("reason") or "",
-            "hook": cand.get("hook") or "",
-        }
-        shifted = _shift_segments(segments, float(section["start"]), duration)
-        return make_clip(
-            section["path"], local, index, job_id, shifted, stage_cb,
-            opts, should_cancel, log_render=True, user_id=user_id,
-        )
-
-    parts = []
-    total = 0.0
-    assembled = False
-    try:
-        for n, section in enumerate(sections):
-            if should_cancel and should_cancel():
-                raise RuntimeError("canceled")
-            duration = max(0.5, float(section.get("duration") or (section["end"] - section["start"])))
-            local = {
-                "start": 0.0,
-                "end": duration,
-                "title": f"{cand.get('title') or 'Short'} · cut {n + 1}",
-                "reason": cand.get("reason") or "",
-                "hook": cand.get("hook") or "",
-            }
-            shifted = _shift_segments(segments, float(section["start"]), duration)
-            result = make_clip(
-                section["path"], local, index * 100 + n, job_id, shifted,
-                stage_cb, opts, should_cancel, user_id=user_id,
-            )
-            parts.append(result["path"])
-            total += duration
-        result = _concat_rendered_parts(parts, cand, index, job_id, total, opts, should_cancel, user_id)
-        assembled = True
-        return result
-    finally:
-        if not assembled:
-            for path in parts:
-                for suffix in (".mp4", ".jpg", ".ass"):
-                    try:
-                        os.remove(path.rsplit(".", 1)[0] + suffix)
-                    except OSError:
-                        pass
+    if not section or not section.get("path"):
+        raise RuntimeError("No source section was downloaded")
+    duration = max(1.0, float(section.get("duration") or (section["end"] - section["start"])))
+    local = {
+        "start": 0.0,
+        "end": duration,
+        "title": cand.get("title") or "Short",
+        "reason": cand.get("reason") or "",
+        "hook": cand.get("hook") or "",
+    }
+    shifted = _shift_segments(segments, float(section["start"]), duration)
+    return make_clip(
+        section["path"], local, index, job_id, shifted, stage_cb,
+        opts, should_cancel, log_render=True, user_id=user_id,
+    )
 
 
 def make_clip(video_path, cand, index, job_id, segments, stage_cb, options=None, should_cancel=None, log_render=False, user_id=0):
     """Produce a vertical mp4 with burned captions. Returns {path, thumb}."""
-    cuts = []
-    for cut in cand.get("cuts") or []:
-        try:
-            cs, ce = float(cut["start"]), float(cut["end"])
-        except (KeyError, TypeError, ValueError):
-            continue
-        if ce > cs + 0.5:
-            cuts.append({"start": cs, "end": ce})
-    if len(cuts) > 1:
-        return _render_multicut(
-            video_path, cand, cuts, index, job_id, segments, stage_cb, options or {}, should_cancel, user_id
-        )
     opts = options or {}
     if should_cancel and should_cancel():
         raise RuntimeError("canceled")

@@ -102,7 +102,6 @@ def _options(user_id, job=None, extra=None):
         "caption_highlight": s.get(user_id, "caption_highlight", "#fabd2f") or "#fabd2f",
         "caption_align": _as_bool(s.get(user_id, "caption_align", True), True),
         "clip_duration": int(s.get(user_id, "short_length", 45) or 45),
-        "clip_mode": s.get(user_id, "clip_mode", "separate") or "separate",
         "hook_mode": s.get(user_id, "hook_mode", "auto") or "auto",
         "chat_highlights": _as_bool(s.get(user_id, "chat_highlights", True), True),
         "gpu_enabled": _as_bool(s.get(user_id, "gpu_enabled", True), True),
@@ -129,8 +128,6 @@ def _options(user_id, job=None, extra=None):
         opts["resolution"] = "1080"
     if opts.get("reframe") not in ("crop", "blur"):
         opts["reframe"] = "crop"
-    if opts.get("clip_mode") not in ("separate", "multi_cut"):
-        opts["clip_mode"] = "separate"
     if opts.get("hook_mode") not in ("auto", "manual", "none"):
         opts["hook_mode"] = "auto"
     opts["chat_highlights"] = _as_bool(opts.get("chat_highlights"), True)
@@ -162,6 +159,24 @@ def _source_info(source, job):
     }
 
 
+def _duration_label(seconds):
+    seconds = int(seconds or 0)
+    if seconds >= 60:
+        return f"{seconds // 60} min"
+    return f"{seconds}s"
+
+
+def _discard_live_media(job_id, user_id, path=None):
+    """Remove an unusable live recording and its caches so a retry starts fresh."""
+    if path:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+    chat.clear(job_id, user_id)
+    transcribe.clear_cache(job_id, user_id)
+
+
 def run_analyze(job_id):
     """Transcript-first analysis. Called by the durable worker."""
     job = db.get_job(job_id)
@@ -182,24 +197,53 @@ def run_analyze(job_id):
             segments = None
             raw_info = None
             live_capture = False
+            reuse_live = False
             chat_events = []
+            live_chat_cands = []
             chat_capture = None
             chat_shift = 0.0
             chat_enabled = _as_bool(merged.get("chat_highlights"), True)
 
             if source:
+                reuse_live = "_live." in os.path.basename(source).lower()
                 info = _source_info(source, job)
                 if info["duration"] <= 0:
                     db.log(job_id, "Existing source could not be read — switching to transcript-first mode", "warn")
                     source = None
+                    reuse_live = False
                 else:
                     db.log(job_id, "Reusing downloaded source video — skipping download")
                     db.update_job(job_id, stage="downloading", progress=0.24)
+                    cached_target = int(merged.get("clip_duration") or 45)
+                    if reuse_live:
+                        # Validate the cached chat before spending time on a
+                        # full transcription of the recording.
+                        chat_events = chat.read_events(job_id, user_id, info["duration"])
+                        if chat_events:
+                            db.log(job_id, f"Cached live chat found — {len(chat_events)} messages")
+                        cached_spikes = (
+                            chat.detect_spikes(chat_events, info["duration"], cached_target)
+                            if chat_events else []
+                        )
+                        cached_cands = (
+                            chat.spike_candidates(
+                                chat_events, info["duration"],
+                                max(1, int(job["short_count"])), cached_target,
+                                spikes=cached_spikes,
+                            )
+                            if cached_spikes else []
+                        )
+                        if not cached_cands:
+                            _discard_live_media(job_id, user_id, source)
+                            raise RuntimeError(
+                                "The cached live recording has no usable chat spikes. Retry the job "
+                                "to record a fresh spike window."
+                            )
                     segments = transcribe.transcribe(
                         source, job_id, user_id, cb, job["url"], cancel_cb=ev.is_set
                     )
                     analysis_media = source
-                    if chat_enabled:
+                    if chat_enabled and not chat_events:
                         chat_events = chat.read_events(job_id, user_id, info["duration"])
                         if chat_events:
                             db.log(job_id, f"Cached live chat found — {len(chat_events)} messages")
@@ -222,50 +266,106 @@ def run_analyze(job_id):
                         "duration": 0,
                         "channel": raw_info.get("uploader") or raw_info.get("channel") or "",
                     }
-                    db.update_job(job_id, title=info["title"], stage="recording", progress=0.08)
-                    db.log(job_id, "Live stream detected — recording it before analysis…")
-                    stream_urls = None
-                    if chat_enabled and chat.has_chat(raw_info):
-                        try:
-                            stream_urls = downloader.resolve_stream_urls(job["url"])
-                            if stream_urls:
-                                chat_capture = chat.LiveChatCapture(job["url"], job_id, user_id)
-                                chat_capture.start()
-                                db.log(job_id, "Capturing live chat alongside the recording…")
-                        except Exception as chat_exc:
-                            chat_capture = None
-                            stream_urls = None
-                            db.log(job_id, f"Live chat capture could not start: {chat_exc}", "warn")
+                    db.update_job(job_id, title=info["title"], stage="recording", progress=0.06)
+                    # Live clipping is always chat-spike driven; the global chat
+                    # preference only controls normal VOD analysis.
+                    db.log(
+                        job_id,
+                        "Live stream detected — chat spikes are automatic; recording only around them.",
+                    )
+                    try:
+                        stream_urls = downloader.resolve_stream_urls(job["url"])
+                    except Exception as e:
+                        raise RuntimeError(f"Could not open this live stream: {e}") from e
                     record_started_at = time.time()
+                    chat_capture = chat.LiveChatCapture(job["url"], job_id, user_id)
+                    chat_capture.start()
+                    chat.set_record_start(job_id, user_id, record_started_at)
+                    chat_shift = (chat_capture.started_at or record_started_at) - record_started_at
+                    monitor = chat.LiveSpikeMonitor(
+                        job_id, user_id, record_started_at,
+                        count=max(1, int(job["short_count"])),
+                        target=int(merged.get("clip_duration") or 45),
+                        shift=chat_shift,
+                        pad=downloader.live_spike_pad_seconds(),
+                        scan_seconds=downloader.live_chat_scan_seconds(),
+                        max_seconds=downloader.live_max_capture_seconds(),
+                        capture=chat_capture,
+                    )
                     try:
                         recorded = downloader.record_live(
                             job["url"], job_id, user_id,
-                            downloader.live_capture_seconds(whole=chat_enabled),
+                            downloader.live_max_capture_seconds(),
                             cb, cancel_cb=ev.is_set, urls=stream_urls,
+                            stop_cb=monitor.poll,
                         )
                     finally:
-                        if chat_capture:
-                            chat_capture.stop()
+                        chat_capture.stop()
                     _check(ev)
-                    if chat_capture:
-                        chat_shift = (chat_capture.started_at or record_started_at) - record_started_at
-                        chat.set_record_start(job_id, user_id, record_started_at)
-                        chat_events = chat.read_events(
-                            job_id, user_id, recorded["duration"], shift=chat_shift,
-                            start_epoch=record_started_at,
-                        )
-                        if chat_events:
-                            db.log(job_id, f"Live chat captured — {len(chat_events)} messages, scanning for spikes")
-                        else:
-                            db.log(job_id, "No usable live chat captured — falling back to transcript/AI", "warn")
                     source = recorded["path"]
                     info["path"] = source
                     info["duration"] = recorded["duration"]
-                    db.log(job_id, f"Live segment ready ({info['duration']:.0f}s) — transcribing it locally…")
+                    chat_events = chat.read_events(
+                        job_id, user_id, info["duration"],
+                        shift=chat_shift, start_epoch=record_started_at,
+                    )
+                    scan_label = _duration_label(downloader.live_chat_scan_seconds())
+                    if not chat_events:
+                        _discard_live_media(job_id, user_id, source)
+                        if monitor.failure == "chat-unavailable":
+                            raise RuntimeError(
+                                "Live chat could not be captured for this stream, so it cannot "
+                                "be clipped efficiently. Make sure live chat is enabled and try "
+                                "again."
+                            )
+                        raise RuntimeError(
+                            "No live chat messages were captured, so this live stream cannot be "
+                            "clipped efficiently. Try again when live chat is active."
+                        )
+                    target_length = int(merged.get("clip_duration") or 45)
+                    spikes = chat.detect_spikes(chat_events, info["duration"], target_length)
+                    if not spikes and monitor.spikes:
+                        # Keep a spike the incremental watcher already acted on
+                        # even if the final baseline hides it.
+                        spikes = list(monitor.spikes)
+                    if not spikes:
+                        _discard_live_media(job_id, user_id, source)
+                        if info["duration"] < downloader.live_chat_scan_seconds() - 1:
+                            raise RuntimeError(
+                                "The live stream ended before a chat spike was found. "
+                                "Live clipping needs a clear surge in chat."
+                            )
+                        raise RuntimeError(
+                            f"No chat spike was found within the first {scan_label}, so this "
+                            "live stream cannot be clipped efficiently. Try again during a "
+                            "busier moment."
+                        )
+                    wanted = max(1, int(job["short_count"]))
+                    live_chat_cands = chat.spike_candidates(
+                        chat_events, info["duration"], wanted, target_length, spikes=spikes,
+                    )
+                    if not live_chat_cands:
+                        _discard_live_media(job_id, user_id, source)
+                        raise RuntimeError(
+                            "Chat surged, but no usable clip window fit inside the recording. "
+                            "Try again when the stream has been live a little longer."
+                        )
+                    found = len(live_chat_cands)
+                    db.log(
+                        job_id,
+                        f"{found} chat spike window{'' if found == 1 else 's'} recorded "
+                        f"({info['duration'] / 60:.1f} min total) — transcribing just this recording",
+                    )
+                    db.update_job(job_id, stage="transcribing", progress=0.34)
                     segments = transcribe.transcribe(
                         source, job_id, user_id, cb, None,
                         cancel_cb=ev.is_set, info=raw_info, try_online=False,
                     )
+                    for cand in live_chat_cands:
+                        if not cand.get("transcript"):
+                            cand["transcript"] = chat.window_transcript(
+                                segments, cand["start"], cand["end"]
+                            )
                     analysis_media = source
                     db.update_job(job_id, stage="transcribing", progress=0.62)
                 else:
@@ -304,25 +404,34 @@ def run_analyze(job_id):
 
             _check(ev)
             db.update_job(job_id, stage="analyzing", progress=0.66)
-            clip_mode = str(merged.get("clip_mode") or "separate")
             target_length = int(merged.get("clip_duration") or 45)
-            wanted = 1 if clip_mode == "multi_cut" else max(1, int(job["short_count"]))
-            chat_cands = []
-            if chat_events:
+            wanted = max(1, int(job["short_count"]))
+            chat_cands = list(live_chat_cands)
+            if chat_events and not live_capture:
                 chat_cands = chat.spike_candidates(
-                    chat_events, info["duration"], wanted, target_length, clip_mode, segments
+                    chat_events, info["duration"], wanted, target_length, segments
                 )
             if chat_cands:
                 label = "clip" if len(chat_cands) == 1 else "clips"
                 db.log(job_id, f"Chat heatmap found {len(chat_cands)} spike {label}")
             elif chat_events:
-                db.log(job_id, "Chat was steady — no spike strong enough; using transcript/AI", "warn")
-            if chat_cands and len(chat_cands) >= wanted:
+                db.log(job_id, "Chat was steady — no spike strong enough", "warn")
+            if reuse_live:
+                if not chat_events or not chat_cands:
+                    _discard_live_media(job_id, user_id, source)
+                    raise RuntimeError(
+                        "The cached live recording has no usable chat spikes. Retry the job "
+                        "to record a fresh spike window."
+                    )
+                cands = chat_cands
+            elif live_capture:
+                cands = chat_cands
+            elif chat_cands and len(chat_cands) >= wanted:
                 cands = chat_cands
             else:
                 normal_cands = highlights.pick_highlights(
                     analysis_media, info["title"], info["duration"], segments,
-                    wanted, job_id, user_id, target_length, clip_mode,
+                    wanted, job_id, user_id, target_length,
                 )
                 cands = chat.merge_candidates(chat_cands, normal_cands, wanted) if chat_cands else normal_cands
             _check(ev)
@@ -350,15 +459,15 @@ def run_analyze(job_id):
             "title": info["title"],
             "channel": info.get("channel") or "",
             "url": job["url"],
-            "analysis": "live" if live_capture else ("captions" if (segments and not analysis_media) else "media"),
+            "analysis": "live" if (live_capture or reuse_live) else ("captions" if (segments and not analysis_media) else "media"),
             "chat_messages": len(chat_events),
         })
         db.update_job(
             job_id, status="review", stage="review", progress=1.0,
             candidates=json.dumps(cands),
         )
-        if live_capture:
-            db.log(job_id, f"Found {len(cands)} candidates in the live segment — render only the selected ranges")
+        if live_capture or reuse_live:
+            db.log(job_id, f"Found {len(cands)} candidates in the live recording — render only the selected ranges")
         else:
             db.log(job_id, f"Found {len(cands)} candidates — video not downloaded yet; render only the selected ranges")
     except JobCanceled:
@@ -602,30 +711,9 @@ def preview_candidate(job_id, idx, user_id):
     return {"path": section["path"], "filename": os.path.basename(section["path"]), "duration": section["duration"]}
 
 
-def _download_ranges(job_id, url, user_id, ranges, tag_prefix, ev, log_label):
-    sections = []
-    for n, (start, end) in enumerate(ranges):
-        _check(ev)
-        db.log(job_id, f"Downloading selected range {start:.1f}s–{end:.1f}s for {log_label}")
-        section = downloader.download_section(
-            url, job_id, start, end, user_id, tag=f"{tag_prefix}_{n}", cancel_cb=ev.is_set
-        )
-        sections.append(section)
-    return sections
-
-
 def _render_clip(job_id, job, user_id, opts, meta, cand, segments, idx, ev):
     start = float(cand["start"])
     end = float(cand["end"])
-    cuts = []
-    for cut in cand.get("cuts") or []:
-        try:
-            cs, ce = float(cut["start"]), float(cut["end"])
-        except (KeyError, TypeError, ValueError):
-            continue
-        if ce > cs + 0.5:
-            cuts.append((cs, ce))
-    ranges = cuts if len(cuts) > 1 else [(start, end)]
     clip_segments = cand.get("caption_segments") or segments
 
     full_source = meta.get("path")
@@ -648,16 +736,17 @@ def _render_clip(job_id, job, user_id, opts, meta, cand, segments, idx, ev):
         and abs(end - manual_end) < 0.2
     ):
         db.log(job_id, "Using the already-downloaded manual section for rendering")
-        sections = [{
+        section = {
             "path": manual_section,
             "start": manual_start,
             "end": manual_end,
             "duration": downloader.probe_duration(manual_section) or (manual_end - manual_start),
-        }]
+        }
     else:
         try:
-            sections = _download_ranges(
-                job_id, job["url"], user_id, ranges, f"short{idx}", ev, f"short {idx + 1}",
+            db.log(job_id, f"Downloading selected range {start:.1f}s–{end:.1f}s for short {idx + 1}")
+            section = downloader.download_section(
+                job["url"], job_id, start, end, user_id, tag=f"short{idx}", cancel_cb=ev.is_set
             )
         except JobCanceled:
             raise
@@ -672,8 +761,8 @@ def _render_clip(job_id, job, user_id, opts, meta, cand, segments, idx, ev):
                 log_render=True, user_id=user_id,
             )
 
-    return clipper.render_sections(
-        sections, cand, idx, job_id, clip_segments,
+    return clipper.render_section(
+        section, cand, idx, job_id, clip_segments,
         lambda stage, prog: None, opts, lambda: ev.is_set(), user_id=user_id,
     )
 
@@ -807,9 +896,7 @@ def run_render(job_id):
             slice_start = 0.04 + 0.82 * ((n - 1) / total)
             slice_span = 0.82 / total
             db.update_job(job_id, stage="clipping", progress=round(slice_start, 3))
-            cuts = cand.get("cuts") or []
-            detail = f" · {len(cuts)} cuts" if len(cuts) > 1 else f" [{cand['start']:.0f}-{cand['end']:.0f}s]"
-            db.log(job_id, f"Rendering short {n}: {cand['title']}{detail}")
+            db.log(job_id, f"Rendering short {n}: {cand['title']} [{cand['start']:.0f}-{cand['end']:.0f}s]")
             if cand.get("hook"):
                 db.log(job_id, f"Hook line: {cand['hook']}")
             result = _render_clip(job_id, job, user_id, opts, meta, cand, segments, idx, ev)
@@ -822,10 +909,7 @@ def run_render(job_id):
             except Exception as e:
                 db.log(job_id, f"Could not move the clip to the configured output folder ({e}); keeping it in the app media folder", "warn")
 
-            duration = (
-                sum(max(0.0, float(c["end"]) - float(c["start"])) for c in cuts)
-                if len(cuts) > 1 else cand["end"] - cand["start"]
-            )
+            duration = cand["end"] - cand["start"]
             qa_result = qa.check_clip(result["path"])
             clip_id = db.add_clip(
                 user_id, job_id, cand["title"], result["path"], result.get("thumb"),

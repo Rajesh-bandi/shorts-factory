@@ -41,69 +41,8 @@ def _parse_llm_json(text):
         return []
 
 
-def _fit_cuts_total(cuts, target, duration):
-    """Keep the AI's cuts non-overlapping and fit their combined length to target."""
-    target = max(2.0, float(target or 45))
-    duration = max(1.0, float(duration))
-    cleaned = []
-    for cut in sorted(cuts, key=lambda c: float(c["start"])):
-        try:
-            start = max(0.0, min(duration, float(cut["start"])))
-            end = max(start, min(duration, float(cut["end"])))
-        except (KeyError, TypeError, ValueError):
-            continue
-        if end > start + 1.0:
-            cleaned.append({"start": start, "end": end})
-
-    # Remove accidental overlaps instead of duplicating source material.
-    for i in range(len(cleaned) - 1):
-        cleaned[i]["end"] = min(cleaned[i]["end"], cleaned[i + 1]["start"])
-    cleaned = [c for c in cleaned if c["end"] > c["start"] + 0.5]
-    if len(cleaned) < 2:
-        return []
-
-    total = sum(c["end"] - c["start"] for c in cleaned)
-    if total <= 0:
-        return []
-
-    # Scale once, respecting the gap before the next cut and the video end.
-    factor = target / total
-    for i, cut in enumerate(cleaned):
-        max_end = cleaned[i + 1]["start"] if i + 1 < len(cleaned) else duration
-        max_len = max(0.5, max_end - cut["start"])
-        desired = max(1.0, (cut["end"] - cut["start"]) * factor)
-        cut["end"] = min(cut["start"] + desired, cut["start"] + max_len)
-
-    # Correct any rounding / gap leftovers so the combined duration is exact
-    # whenever the source has enough room.
-    def _total():
-        return sum(c["end"] - c["start"] for c in cleaned)
-
-    remaining = target - _total()
-    if abs(remaining) > 0.01:
-        order = range(len(cleaned) - 1, -1, -1) if remaining > 0 else range(len(cleaned))
-        for i in order:
-            cut = cleaned[i]
-            if remaining > 0:
-                max_end = cleaned[i + 1]["start"] if i + 1 < len(cleaned) else duration
-                room = max(0.0, max_end - cut["end"])
-                add = min(remaining, room)
-                cut["end"] += add
-                remaining -= add
-            else:
-                room = max(0.0, (cut["end"] - cut["start"]) - 1.0)
-                trim = min(-remaining, room)
-                cut["end"] -= trim
-                remaining += trim
-            if abs(remaining) <= 0.01:
-                break
-    return cleaned
-
-
 def _pick_chunked(title, duration, segments, count, job_id, user_id, target=45):
     """Map-reduce AI selection over overlapping transcript windows."""
-    from . import db
-
     window = 600.0
     step = 540.0
     pool = []
@@ -177,7 +116,7 @@ Reply with ONLY a JSON array:
             break
 
     if len(chosen) < count:
-        extra = pick_transcript_heuristic(segments, duration, count, job_id, target, "separate")
+        extra = pick_transcript_heuristic(segments, duration, count, job_id, target)
         for item in extra:
             if any(not (item["end"] <= c["start"] or item["start"] >= c["end"]) for c in chosen):
                 continue
@@ -189,21 +128,19 @@ Reply with ONLY a JSON array:
     return chosen[:count]
 
 
-def pick_llm(video_path, title, duration, segments, count, job_id, user_id, target=45, clip_mode="separate"):
+def pick_llm(video_path, title, duration, segments, count, job_id, user_id, target=45):
     """Ask an OpenAI-compatible model to choose highlight windows.
 
     Long transcripts are processed in overlapping windows and merged locally,
     so the end of a two-hour video is not silently dropped by a prompt cap.
     """
-    from . import db
-
     target = int(target or 45)
     # compact transcript: ~1 line per 20s window to keep prompt small
     lines = []
     for seg in segments:
         lines.append(f"[{int(seg['start'])}-{int(seg['end'])}] {seg['text']}")
     transcript = "\n".join(lines)
-    if len(transcript) > 60000 and clip_mode == "separate":
+    if len(transcript) > 60000:
         return _pick_chunked(
             title, duration, segments, count, job_id, user_id, target
         )
@@ -212,35 +149,7 @@ def pick_llm(video_path, title, duration, segments, count, job_id, user_id, targ
         step = math.ceil(len(lines) / (max_chars // 120))
         transcript = "\n".join(lines[::step])
 
-    if clip_mode == "multi_cut":
-        prompt = f"""You are editing one YouTube Short from a long YouTube video.
-
-Video title: {title}
-Duration: {int(duration)} seconds
-
-Transcript with [start-end] second timestamps:
-{transcript}
-
-Build ONE coherent Short from non-overlapping cuts from different parts of the video.
-Use as many cuts as the story needs — at least 2, with no fixed upper limit. More cuts are good when they preserve important moments.
-The COMBINED duration of ALL cuts must be exactly {target} seconds (sum of every cut's end - start). This is the total for the Short, not the length of each cut. Do not return a longer or shorter selection.
-
-The cuts must form a complete, understandable mini-story: hook/context, progression, and payoff/reaction. Do not include dead air, filler, repeated moments, or arbitrary spans.
-
-If the video is a list/ranking (for example, "10 best weapons"):
-- Keep the opening/intro that establishes the count and the topic, so a new viewer immediately knows what the video is about.
-- Cover EVERY ranked item. Include each item's name, its key explanation, and its strongest demonstration, scene, or reaction.
-- Allocate the {target} seconds across the items according to their importance; compress or shorten filler, never an entire item or a critical fact.
-- Do not omit items or important details just to save time. Tighten each item instead. Every cut must contain a meaningful part of the explanation or action, not just a title card.
-
-Do not compromise on important details: names, numbers, rankings, context, and payoffs must remain clear. If something cannot fit, shorten the wording around it — do not drop the fact. Prefer complete spoken thoughts and clean cut points.
-
-No dead air or repeated moments.
-
-Reply with ONLY a JSON array containing one object, no other text:
-[{{"title": "<punchy 3-6 word Short title>", "reason": "<one line why this works>", "cuts": [{{"start": <seconds>, "end": <seconds>}}, {{"start": <seconds>, "end": <seconds>}}]}}]"""
-    else:
-        prompt = f"""You pick the most viral short-form clips from a long YouTube video.
+    prompt = f"""You pick the most viral short-form clips from a long YouTube video.
 
 Video title: {title}
 Duration: {int(duration)} seconds
@@ -256,7 +165,7 @@ Select the {count} best moments for YouTube Shorts:
 - clips must not overlap
 
 Reply with ONLY a JSON array, no other text:
-[{{"start": <seconds>, "end": <seconds>, "title": "<punchy 3-6 word Short title>", "reason": "<one line why this will get views>"}}]"""
+[{{"start": <seconds>, "end": <seconds>, "title": "<punchy 3-6 word title>", "reason": "<one line why this will get views>"}}]"""
 
     db.log(job_id, f"Asking LLM ({settings.llm_config(user_id)['model']}) to pick highlights…")
     text = _llm_chat(user_id, [{"role": "user", "content": prompt}])
@@ -267,33 +176,6 @@ Reply with ONLY a JSON array, no other text:
 
     out = []
     for p in picks[:count]:
-        if clip_mode == "multi_cut":
-            cuts = []
-            for cut in p.get("cuts") or []:
-                try:
-                    cs, ce = float(cut["start"]), float(cut["end"])
-                except (KeyError, TypeError, ValueError):
-                    continue
-                cs, ce = max(0.0, cs), min(duration, ce)
-                if ce > cs + 1.0:
-                    cuts.append({"start": cs, "end": ce})
-            if len(cuts) < 2:
-                continue
-            cuts = _fit_cuts_total(cuts, target, duration)
-            if len(cuts) < 2:
-                continue
-            out.append(
-                {
-                    "start": cuts[0]["start"],
-                    "end": cuts[-1]["end"],
-                    "cuts": cuts,
-                    "title": str(p.get("title", ""))[:80] or "Multi-cut Short",
-                    "reason": str(p.get("reason", ""))[:200],
-                    "transcript": " ".join(_window_text(segments, c["start"], c["end"]) for c in cuts)[:500],
-                    "score": None,
-                }
-            )
-            break
         try:
             s, e = float(p["start"]), float(p["end"])
         except (KeyError, TypeError, ValueError):
@@ -331,19 +213,16 @@ def _audio_energy(video_path, sample_sec=1.0):
     return energy.tolist()
 
 
-def pick_heuristic(video_path, duration, count, job_id, target=45, clip_mode="separate"):
+def pick_heuristic(video_path, duration, count, job_id, target=45):
     """Audio-energy based highlight detection (works without LLM/Whisper)."""
-    from . import db
-
     target = int(target or 45)
     db.log(job_id, "Scanning audio energy for highlight candidates…")
     energy = _audio_energy(video_path)
     if not energy:
         return []
 
-    want = 2 if clip_mode == "multi_cut" else count
-    clip_len = int(target / want) if clip_mode == "multi_cut" else int(target)
-    clip_len = max(5, clip_len)
+    want = max(1, int(count or 1))
+    clip_len = max(5, int(target))
     best_spans = []
     used = []
 
@@ -362,19 +241,6 @@ def pick_heuristic(video_path, duration, count, job_id, target=45, clip_mode="se
         best_spans.append((val, s, e))
         if len(best_spans) >= want:
             break
-
-    if clip_mode == "multi_cut" and best_spans:
-        spans = sorted(best_spans, key=lambda item: item[1])
-        cuts = [{"start": s, "end": e} for _, s, e in spans]
-        return [{
-            "start": cuts[0]["start"],
-            "end": cuts[-1]["end"],
-            "cuts": cuts,
-            "title": "Multi-cut highlight",
-            "reason": "Energy-selected moments combined into one Short",
-            "transcript": "",
-            "score": round(sum(v for v, _, _ in spans) / len(spans), 4),
-        }]
 
     out = []
     for rank, (val, s, e) in enumerate(sorted(best_spans, reverse=True), 1):
@@ -399,10 +265,8 @@ HOOK_WORDS = (
 )
 
 
-def pick_transcript_heuristic(segments, duration, count, job_id, target=45, clip_mode="separate"):
+def pick_transcript_heuristic(segments, duration, count, job_id, target=45):
     """Pick strong transcript windows without downloading video or audio."""
-    from . import db
-
     target = max(8, int(target or 45))
     duration = max(1.0, float(duration or (segments[-1]["end"] if segments else 1)))
     if not segments:
@@ -436,12 +300,8 @@ def pick_transcript_heuristic(segments, duration, count, job_id, target=45, clip
         return {"start": round(snapped_start, 2), "end": round(snapped_end, 2),
                 "text": text, "score": round(score, 4)}
 
-    if clip_mode == "multi_cut":
-        parts = max(3, min(6, target // 9))
-        length = max(5.0, target / parts)
-    else:
-        parts = max(1, min(5, int(count)))
-        length = target
+    parts = max(1, min(5, int(count)))
+    length = target
 
     starts = []
     last = -1e9
@@ -471,23 +331,6 @@ def pick_transcript_heuristic(segments, duration, count, job_id, target=45, clip
     if not chosen:
         return []
 
-    if clip_mode == "multi_cut":
-        cuts = sorted(({"start": c["start"], "end": c["end"]} for c in chosen), key=lambda c: c["start"])
-        if len(cuts) < 2:
-            return []
-        cuts = _fit_cuts_total(cuts, target, duration)
-        if len(cuts) < 2:
-            return []
-        strongest = max(chosen, key=lambda c: c["score"])
-        words = strongest["text"].split()[:5]
-        return [{
-            "start": cuts[0]["start"], "end": cuts[-1]["end"], "cuts": cuts,
-            "title": " ".join(words).strip(".,!?") or "Multi-cut highlight",
-            "reason": "Transcript-selected moments combined into one story",
-            "transcript": " ".join(c["text"] for c in chosen)[:500],
-            "score": round(sum(c["score"] for c in chosen), 4),
-        }]
-
     out = []
     for rank, item in enumerate(sorted(chosen, key=lambda c: c["score"], reverse=True), 1):
         words = item["text"].split()[:6]
@@ -500,20 +343,20 @@ def pick_transcript_heuristic(segments, duration, count, job_id, target=45, clip
     return out
 
 
-def pick_highlights(video_path, title, duration, segments, count, job_id, user_id, target=45, clip_mode="separate"):
+def pick_highlights(video_path, title, duration, segments, count, job_id, user_id, target=45):
     """Try AI first, then transcript heuristics, then audio energy."""
     if settings.llm_available(user_id) and segments:
         try:
-            picks = pick_llm(video_path, title, duration, segments, count, job_id, user_id, target, clip_mode)
+            picks = pick_llm(video_path, title, duration, segments, count, job_id, user_id, target)
             if picks:
                 return picks
             db.log(job_id, "LLM returned no usable highlights — using transcript heuristics", "warn")
         except Exception as e:
             db.log(job_id, f"LLM highlight pick failed ({e}) — using transcript heuristics", "warn")
     if segments:
-        picks = pick_transcript_heuristic(segments, duration, count, job_id, target, clip_mode)
+        picks = pick_transcript_heuristic(segments, duration, count, job_id, target)
         if picks:
             return picks
     if video_path:
-        return pick_heuristic(video_path, duration, count, job_id, target, clip_mode)
+        return pick_heuristic(video_path, duration, count, job_id, target)
     return []

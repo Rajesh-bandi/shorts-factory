@@ -149,22 +149,32 @@ def is_live_info(info) -> bool:
     return bool((info or {}).get("is_live")) or status in ("is_live", "is_live_starting")
 
 
-def live_capture_seconds(whole=False) -> int:
-    """How much of a live stream to record; 0 means until it ends.
-
-    Live-chat jobs pass whole=True so their heatmap covers the entire stream.
-    An explicit LIVE_CAPTURE_SECONDS still wins, and 0 always means full.
-    """
-    raw = os.getenv("LIVE_CAPTURE_SECONDS")
-    if raw is None and whole:
-        return 0
+def _env_seconds(name, default, low, high):
     try:
-        seconds = int(raw if raw is not None else 900)
+        value = int(os.getenv(name, str(default)))
     except (TypeError, ValueError):
-        seconds = 900
-    if seconds <= 0:
-        return 0
-    return max(30, min(3600, seconds))
+        value = default
+    return max(low, min(high, value))
+
+
+def live_chat_scan_seconds() -> int:
+    """How long to watch chat for the first spike before giving up."""
+    return _env_seconds("LIVE_CHAT_SCAN_SECONDS", 300, 30, 1800)
+
+
+def live_spike_pad_seconds() -> int:
+    """How much video to record before and after every chat spike."""
+    return _env_seconds("LIVE_SPIKE_PAD_SECONDS", 300, 30, 900)
+
+
+def live_max_capture_seconds() -> int:
+    """Hard cap for a live capture, even when chat keeps spiking."""
+    return _env_seconds("LIVE_MAX_CAPTURE_SECONDS", 1800, 120, 7200)
+
+
+def live_record_stall_seconds() -> int:
+    """Abort a live recording when ffmpeg writes nothing for this long."""
+    return _env_seconds("LIVE_RECORD_STALL_SECONDS", 120, 60, 600)
 
 
 def _progress_hook(job_id, stage_cb, cancel_cb=None):
@@ -306,20 +316,20 @@ def resolve_stream_urls(url):
     return urls
 
 
-def record_live(url, job_id, user_id, seconds, stage_cb, cancel_cb=None, urls=None):
-    """Record a bounded segment of a live stream into a reusable local file.
+def record_live(url, job_id, user_id, seconds, stage_cb, cancel_cb=None, urls=None, stop_cb=None):
+    """Record a bounded live segment and stop as soon as chat windows are covered.
 
-    ffmpeg copies the incoming video/audio without re-encoding. When the source
-    ends early, the shorter recording is kept and analyzed; canceling removes
-    the partial file so a retry starts cleanly.
+    ``stop_cb`` is polled while ffmpeg is running. When it returns True the
+    recorder stops and keeps the partial file, which is why the muxer uses
+    fragmented MP4: a killed ffmpeg still leaves a readable file.
     """
     if seconds is None:
-        seconds = live_capture_seconds()
+        seconds = live_max_capture_seconds()
     try:
         seconds = int(seconds)
     except (TypeError, ValueError):
-        seconds = 0
-    seconds = 0 if seconds <= 0 else max(30, min(3600, seconds))
+        seconds = live_max_capture_seconds()
+    seconds = max(30, min(7200, seconds))
     directory = user_media_dir(user_id)
     path = os.path.join(directory, f"job{job_id}_live.mp4")
     if os.path.exists(path):
@@ -327,7 +337,7 @@ def record_live(url, job_id, user_id, seconds, stage_cb, cancel_cb=None, urls=No
         if duration > 1:
             db.log(job_id, f"Reusing live recording {os.path.basename(path)} ({duration:.0f}s)")
             stage_cb("recording", 0.30)
-            return {"path": path, "duration": duration, "recorded": duration}
+            return {"path": path, "duration": duration, "recorded": duration, "stopped": False}
         try:
             os.remove(path)
         except OSError:
@@ -336,12 +346,10 @@ def record_live(url, job_id, user_id, seconds, stage_cb, cancel_cb=None, urls=No
     stream_urls = urls or resolve_stream_urls(url)
     if not stream_urls:
         raise RuntimeError("Could not resolve the live stream URL")
-    if seconds:
-        db.log(job_id, f"Recording live stream for up to {seconds // 60}m {seconds % 60:02d}s…")
-    else:
-        db.log(job_id, "Recording the live stream until it ends…")
+    db.log(job_id, f"Watching live chat and recording at most {seconds // 60}m {seconds % 60:02d}s…")
     stage_cb("recording", 0.08)
     tmp = os.path.join(directory, f"job{job_id}_live.part.mp4")
+    log_path = os.path.join(directory, f"job{job_id}_live.log")
     try:
         os.remove(tmp)
     except OSError:
@@ -349,38 +357,68 @@ def record_live(url, job_id, user_id, seconds, stage_cb, cancel_cb=None, urls=No
 
     cmd = ["ffmpeg", "-y", "-nostdin", "-loglevel", "error"]
     for stream_url in stream_urls:
-        cmd += ["-i", stream_url]
+        # A long capture should survive short HLS/network interruptions.
+        cmd += [
+            "-reconnect", "1", "-reconnect_streamed", "1",
+            "-reconnect_delay_max", "5", "-i", stream_url,
+        ]
     if len(stream_urls) >= 2:
         cmd += ["-map", "0:v:0?", "-map", "1:a:0?"]
     else:
         cmd += ["-map", "0:v:0?", "-map", "0:a:0?"]
-    if seconds:
-        cmd += ["-t", str(seconds)]
     cmd += [
-        "-c", "copy", "-movflags", "+faststart",
+        "-t", str(seconds),
+        "-c", "copy", "-bsf:a", "aac_adtstoasc",
+        # Flush every packet so a hard stop still leaves a readable file.
+        # Without this the fMP4 header/fragments can stay buffered and a
+        # killed ffmpeg leaves a 28-byte file with no moov atom.
+        "-flush_packets", "1",
+        "-movflags", "+frag_keyframe+empty_moov+default_base_moof",
         "-avoid_negative_ts", "make_zero", tmp,
     ]
 
+    log_handle = open(log_path, "w", encoding="utf-8", errors="replace")
     proc = subprocess.Popen(
         cmd,
         stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stderr=log_handle,
         start_new_session=True,
     )
     started = time.monotonic()
+    stall_seconds = live_record_stall_seconds()
+    last_size = 0
+    last_growth = started
     canceled = False
+    stopped = False
+    stalled = False
     try:
         while proc.poll() is None:
             if cancel_cb and cancel_cb():
                 canceled = True
                 _stop_process(proc, force=True)
                 break
-            elapsed = time.monotonic() - started
-            if seconds:
-                stage_cb("recording", min(0.29, 0.08 + 0.21 * (elapsed / seconds)))
-            else:
-                # Unknown end time: let the bar creep toward the recording cap.
-                stage_cb("recording", min(0.29, 0.08 + 0.21 * min(1.0, elapsed / 10800)))
+            if stop_cb:
+                try:
+                    if stop_cb():
+                        stopped = True
+                        _stop_process(proc, force=True)
+                        break
+                except Exception as exc:
+                    db.log(job_id, f"Live stop check failed: {exc}", "warn")
+            now = time.monotonic()
+            try:
+                size = os.path.getsize(tmp)
+            except OSError:
+                size = 0
+            if size > last_size:
+                last_size = size
+                last_growth = now
+            elif now - last_growth >= stall_seconds:
+                stalled = True
+                _stop_process(proc, force=True)
+                break
+            elapsed = now - started
+            stage_cb("recording", min(0.29, 0.08 + 0.21 * min(1.0, elapsed / max(1, seconds))))
             time.sleep(0.5)
     except BaseException:
         _stop_process(proc, force=True)
@@ -392,6 +430,7 @@ def record_live(url, job_id, user_id, seconds, stage_cb, cancel_cb=None, urls=No
     finally:
         if proc.poll() is None:
             _stop_process(proc, force=True)
+        log_handle.close()
 
     if canceled:
         try:
@@ -400,17 +439,49 @@ def record_live(url, job_id, user_id, seconds, stage_cb, cancel_cb=None, urls=No
             pass
         raise RuntimeError("canceled")
 
-    duration = probe_duration(tmp)
-    if proc.returncode != 0 or duration <= 1 or not os.path.exists(tmp) or os.path.getsize(tmp) <= 1024:
+    if stalled:
+        tail = ""
+        try:
+            with open(log_path, encoding="utf-8", errors="replace") as handle:
+                tail = " | ".join(handle.read().strip().splitlines()[-3:])
+        except OSError:
+            pass
         try:
             os.remove(tmp)
         except OSError:
             pass
-        raise RuntimeError("ffmpeg could not record this live stream")
+        raise RuntimeError(
+            f"ffmpeg wrote no live video or audio for {stall_seconds}s; "
+            "the stream may have ended or be blocking this server"
+            + (f": {tail[:300]}" if tail else "")
+        )
+
+    duration = probe_duration(tmp)
+    valid = os.path.exists(tmp) and os.path.getsize(tmp) > 1024 and duration > 1
+    if not valid:
+        tail = ""
+        try:
+            with open(log_path, encoding="utf-8", errors="replace") as handle:
+                tail = " | ".join(handle.read().strip().splitlines()[-3:])
+        except OSError:
+            pass
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise RuntimeError(
+            "ffmpeg could not record this live stream"
+            + (f": {tail[:300]}" if tail else "")
+        )
     os.replace(tmp, path)
+    try:
+        os.remove(log_path)
+    except OSError:
+        pass
     stage_cb("recording", 0.30)
-    db.log(job_id, f"Recorded {duration:.0f}s of live video")
-    return {"path": path, "duration": duration, "recorded": duration}
+    suffix = " (spike windows covered)" if stopped else ""
+    db.log(job_id, f"Recorded {duration:.0f}s of live video{suffix}")
+    return {"path": path, "duration": duration, "recorded": duration, "stopped": stopped}
 
 
 def trim_local(source, job_id, start, end, user_id, tag="0"):

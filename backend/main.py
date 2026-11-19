@@ -55,7 +55,8 @@ _ALLOWED_ORIGINS = {
     "http://127.0.0.1:8787",
     "http://localhost:8787",
 }
-_STATIC_CACHE_EXTS = (".css", ".js", ".mjs", ".svg", ".png", ".jpg", ".jpeg", ".webp", ".woff2")
+_STATIC_CACHE_EXTS = (".css", ".svg", ".png", ".jpg", ".jpeg", ".webp", ".woff2")
+_STATIC_REVALIDATE_EXTS = (".js", ".mjs")
 
 
 @app.middleware("http")
@@ -71,9 +72,13 @@ async def security_middleware(request: Request, call_next):
     if request.url.path.startswith("/api/"):
         response.headers["Cache-Control"] = "no-store"
     elif not request.url.path.startswith("/media/") and request.url.path.lower().endswith(_STATIC_CACHE_EXTS):
-        # Every stylesheet/script URL carries a version query; media is handled
+        # Versioned static assets can be cached aggressively; media is handled
         # separately by FileResponse. Keep the shell itself revalidated.
         response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    elif not request.url.path.startswith("/media/") and request.url.path.lower().endswith(_STATIC_REVALIDATE_EXTS):
+        # ES module imports do not carry version query strings, so let the
+        # browser revalidate them instead of pinning a stale split forever.
+        response.headers["Cache-Control"] = "no-cache"
     return response
 
 
@@ -337,7 +342,6 @@ class JobCreate(BaseModel):
     caption_box: bool | None = None
     caption_align: bool | None = None
     clip_duration: int | None = None
-    clip_mode: str | None = None
     hook_mode: str | None = None
     chat_highlights: bool | None = None
     reframe: str | None = None
@@ -414,7 +418,6 @@ class BatchCreate(BaseModel):
     short_count: int = 2
     privacy: str | None = None
     clip_duration: int | None = None
-    clip_mode: str | None = None
     hook_mode: str | None = None
     chat_highlights: bool | None = None
     reframe: str | None = None
@@ -438,7 +441,6 @@ def _job_options(payload):
             "caption_box": getattr(payload, "caption_box", None),
             "caption_align": getattr(payload, "caption_align", None),
             "clip_duration": getattr(payload, "clip_duration", None),
-            "clip_mode": getattr(payload, "clip_mode", None),
             "hook_mode": getattr(payload, "hook_mode", None),
             "chat_highlights": getattr(payload, "chat_highlights", None),
             "reframe": getattr(payload, "reframe", None),
@@ -455,7 +457,7 @@ def _check_youtube_url(url: str):
 @app.post("/api/jobs")
 def create_job(payload: JobCreate, user: CurrentUser):
     url = _check_youtube_url(payload.url)
-    count = 1 if payload.clip_mode == "multi_cut" else max(1, min(payload.short_count, 5))
+    count = max(1, min(payload.short_count, 5))
     options = _job_options(payload)
     if payload.batch_id:
         options["auto_upload"] = False

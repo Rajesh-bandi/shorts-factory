@@ -1,9 +1,9 @@
-"""Comment-spike highlights from a live stream's chat.
+"""Chat-spike highlights from a live stream.
 
-Chat is captured alongside the live recording, then the whole captured timeline
-is scanned for message-rate surges. Ordinary videos are deliberately excluded:
-normal YouTube comments have no video-time coordinate, so they cannot identify
-where in the video a comment spike happened.
+Live clipping is deliberately bounded: chat is watched for a rate surge, then
+video is recorded around each surge and recording stops once the post-spike
+padding is covered. Ordinary videos are excluded because normal YouTube
+comments have no video-time coordinate.
 """
 import glob
 import json
@@ -60,6 +60,16 @@ def _chat_paths(job_id, user_id):
     return [base + CHAT_SUFFIX, base + CHAT_SUFFIX + ".part"]
 
 
+def clear(job_id, user_id):
+    """Remove cached live chat for this job so a retry starts clean."""
+    for path in _chat_paths(job_id, user_id) + [_start_path(job_id, user_id)]:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+    _cleanup_fragments(_base(job_id, user_id))
+
+
 def _cleanup_fragments(prefix):
     for path in glob.glob(prefix + ".*-Frag*"):
         try:
@@ -90,6 +100,18 @@ def has_chat(info):
     return downloader.is_live_info(info)
 
 
+def _emoji_text(emoji):
+    if isinstance(emoji, str):
+        return emoji
+    if not isinstance(emoji, dict):
+        return ""
+    ident = emoji.get("emojiId")
+    if ident:
+        return str(ident)
+    shortcuts = emoji.get("shortcuts") or []
+    return str(shortcuts[0]) if shortcuts else ""
+
+
 def _text_value(value):
     if isinstance(value, str):
         return value
@@ -98,7 +120,10 @@ def _text_value(value):
     text = value.get("simpleText")
     if text:
         return str(text)
-    return "".join(str(run.get("text") or run.get("emoji") or "") for run in value.get("runs") or [])
+    return "".join(
+        str(run.get("text") or _emoji_text(run.get("emoji")) or "")
+        for run in value.get("runs") or []
+    )
 
 
 def _body(action):
@@ -129,6 +154,55 @@ def _offset_ms(item, replay):
         return None
 
 
+def _parse_item(item, duration, shift, start_epoch, seen):
+    """Turn one JSONL chat record into events at video-recording offsets."""
+    if not isinstance(item, dict):
+        return []
+    replay = item.get("replayChatItemAction") or {}
+    raw_offset = _offset_ms(item, replay)
+    actions = replay.get("actions") or item.get("actions") or []
+    if not actions and item.get("addChatItemAction"):
+        actions = [item]
+    out = []
+    for action in actions:
+        body = _body(action)
+        if not body:
+            continue
+        event_offset = None
+        if raw_offset is not None:
+            event_offset = raw_offset - float(shift or 0)
+        # yt-dlp's live pseudo-events carry a wall-clock timestamp; it maps
+        # cleanly onto the video recording even when the first history batch
+        # arrives with offset zero, and some live JSONL has no video offset.
+        timestamp = body.get("timestampUsec")
+        if item.get("isLive") and timestamp is not None and start_epoch is not None:
+            try:
+                event_offset = float(timestamp) / 1_000_000.0 - float(start_epoch)
+            except (TypeError, ValueError):
+                pass
+        if event_offset is None:
+            continue
+        if event_offset < -1.5:
+            continue
+        event_offset = max(0.0, min(duration, event_offset))
+        text = _text_value(body.get("message")).strip()
+        author_name = _text_value(body.get("authorName")).strip()
+        author_id = str(body.get("authorExternalChannelId") or author_name or "")
+        ident = str(body.get("id") or "")
+        if not ident:
+            ident = f"{event_offset:.3f}|{author_id}|{text[:80]}"
+        if ident in seen:
+            continue
+        seen.add(ident)
+        out.append({
+            "offset": event_offset,
+            "text": text,
+            "author": author_name,
+            "author_id": author_id,
+        })
+    return out
+
+
 def _parse_file(path, duration, shift=0.0, start_epoch=None):
     duration = max(1.0, float(duration or 0))
     start_epoch = float(start_epoch) if start_epoch is not None else None
@@ -144,47 +218,7 @@ def _parse_file(path, duration, shift=0.0, start_epoch=None):
                     item = json.loads(line)
                 except (json.JSONDecodeError, TypeError):
                     continue
-                if not isinstance(item, dict):
-                    continue
-                replay = item.get("replayChatItemAction") or {}
-                raw_offset = _offset_ms(item, replay)
-                if raw_offset is None:
-                    continue
-                offset = raw_offset - float(shift or 0)
-                actions = replay.get("actions") or item.get("actions") or []
-                if not actions and item.get("addChatItemAction"):
-                    actions = [item]
-                for action in actions:
-                    body = _body(action)
-                    if not body:
-                        continue
-                    text = _text_value(body.get("message")).strip()
-                    author_name = _text_value(body.get("authorName")).strip()
-                    author_id = str(body.get("authorExternalChannelId") or author_name or "")
-                    # yt-dlp's live pseudo-events carry a wall-clock timestamp;
-                    # it maps cleanly onto the video recording even when the
-                    # first history batch arrives with offset zero.
-                    event_offset = offset
-                    timestamp = body.get("timestampUsec")
-                    if item.get("isLive") and timestamp is not None and start_epoch is not None:
-                        try:
-                            event_offset = float(timestamp) / 1_000_000.0 - start_epoch
-                        except (TypeError, ValueError):
-                            event_offset = offset
-                    if event_offset < -1.5 or event_offset > duration + 1.5:
-                        continue
-                    ident = str(body.get("id") or "")
-                    if not ident:
-                        ident = f"{event_offset:.3f}|{author_id}|{text[:80]}"
-                    if ident in seen:
-                        continue
-                    seen.add(ident)
-                    events.append({
-                        "offset": max(0.0, min(duration, event_offset)),
-                        "text": text,
-                        "author": author_name,
-                        "author_id": author_id,
-                    })
+                events.extend(_parse_item(item, duration, shift, start_epoch, seen))
     except OSError:
         return []
     events.sort(key=lambda event: event["offset"])
@@ -277,12 +311,153 @@ class LiveChatCapture:
         return chat_path(self.job_id, self.user_id)
 
 
+class LiveSpikeMonitor:
+    """Follow the growing chat file and decide when recording can stop.
+
+    The recorder polls :meth:`poll`; it returns True once the last detected
+    spike has its full post-pad recorded, or once the scan/capture limit is
+    reached without a spike. Parsing is incremental, so a busy chat does not
+    re-read the whole file on every poll.
+    """
+
+    def __init__(self, job_id, user_id, started_at, count=1, target=45, shift=0.0,
+                 pad=None, scan_seconds=None, max_seconds=None, capture=None):
+        self.job_id = job_id
+        self.user_id = user_id
+        self.started_at = float(started_at)
+        self.shift = float(shift or 0.0)
+        self.count = max(1, int(count or 1))
+        self.target = max(8, int(target or 45))
+        self.pad = float(pad if pad is not None else downloader.live_spike_pad_seconds())
+        self.scan_seconds = float(
+            scan_seconds if scan_seconds is not None else downloader.live_chat_scan_seconds()
+        )
+        self.max_seconds = float(
+            max_seconds if max_seconds is not None else downloader.live_max_capture_seconds()
+        )
+        self.capture = capture
+        self.events = []
+        self.spikes = []
+        self.failure = None
+        self._path = None
+        self._position = 0
+        self._pending = b""
+        self._seen = set()
+        self._last_read = -10.0
+        self._last_detect = -10.0
+
+    def elapsed(self):
+        return max(0.0, time.time() - self.started_at)
+
+    def _active_path(self):
+        paths = []
+        for path in _chat_paths(self.job_id, self.user_id):
+            try:
+                if os.path.isfile(path):
+                    paths.append(path)
+            except OSError:
+                continue
+        if not paths:
+            return None
+        return max(paths, key=os.path.getsize)
+
+    def _read_new(self, elapsed):
+        if elapsed - self._last_read < 1.0:
+            return
+        self._last_read = elapsed
+        path = self._active_path()
+        if path is None:
+            return
+        if path != self._path:
+            # yt-dlp renames the .part file when a download finishes. The
+            # content is preserved, so continue from the current position.
+            self._path = path
+        try:
+            with open(path, "rb") as handle:
+                size = os.path.getsize(path)
+                if self._position > size:
+                    self._position = 0
+                    self._pending = b""
+                handle.seek(self._position)
+                chunk = handle.read()
+                self._position = handle.tell()
+        except OSError:
+            return
+        if not chunk:
+            return
+        data = self._pending + chunk
+        lines = data.split(b"\n")
+        self._pending = lines.pop()
+        added = False
+        for raw in lines:
+            line = raw.decode("utf-8", "replace").strip()
+            if not line:
+                continue
+            try:
+                item = json.loads(line)
+            except (json.JSONDecodeError, TypeError):
+                continue
+            parsed = _parse_item(item, elapsed, self.shift, self.started_at, self._seen)
+            if parsed:
+                self.events.extend(parsed)
+                added = True
+        if added:
+            self.events.sort(key=lambda event: event["offset"])
+
+    def _detect(self, elapsed):
+        if elapsed < 15 or len(self.events) < 8:
+            return
+        if elapsed - self._last_detect < 2.0:
+            return
+        self._last_detect = elapsed
+        for spike in detect_spikes(self.events, elapsed, self.target):
+            if all(
+                abs(spike["peak"] - seen["peak"]) > max(10.0, spike["scan_window"])
+                for seen in self.spikes
+            ):
+                self.spikes.append(spike)
+        self.spikes.sort(key=lambda spike: spike["peak"])
+
+    def poll(self):
+        elapsed = self.elapsed()
+        self._read_new(elapsed)
+        self._detect(elapsed)
+        if self.spikes:
+            last = self.spikes[-1]["peak"]
+            return elapsed >= min(self.max_seconds, last + self.pad)
+        if (
+            self.capture is not None
+            and not self.events
+            and elapsed >= 20
+            and (
+                self.capture.error
+                or (
+                    self.capture.proc is not None
+                    and self.capture.proc.poll() is not None
+                )
+            )
+        ):
+            # Do not sit through the whole scan when yt-dlp already failed or
+            # exited without producing any chat.
+            self.failure = "chat-unavailable"
+            return True
+        if elapsed >= min(self.scan_seconds, self.max_seconds):
+            self.failure = "no-spike"
+            return True
+        return False
+
+
 def _window_text(segments, start, end):
     return " ".join(
         str(segment.get("text") or "")
         for segment in (segments or [])
         if float(segment.get("end") or 0) > start and float(segment.get("start") or 0) < end
     )[:500]
+
+
+def window_transcript(segments, start, end):
+    """Public helper so callers can fill transcripts after recording ends."""
+    return _window_text(segments, start, end)
 
 
 def _time_label(seconds):
@@ -300,8 +475,103 @@ def _authors(events, start, end):
     }
 
 
-def spike_candidates(events, duration, count, target=45, clip_mode="separate", segments=None):
-    """Turn a chat message timeline into clip candidates around rate spikes."""
+def _scan_window(target):
+    try:
+        target = float(target or 45)
+    except (TypeError, ValueError):
+        target = 45.0
+    return max(5.0, min(15.0, target / 3.0))
+
+
+def detect_spikes(events, duration, target=45):
+    """Return chat-rate surges as chronological peaks with their scan window.
+
+    A surge needs at least five messages in a 5–15 second window, must be at
+    least 1.6× the median chat rate, and must come from several people so a
+    single spammer cannot trigger a recording.
+    """
+    duration = max(1.0, float(duration or 0))
+    if not events or duration < 15:
+        return []
+    scan = _scan_window(target)
+    offsets = [float(event["offset"]) for event in events if 0 <= event["offset"] <= duration]
+    if len(offsets) < 8:
+        return []
+
+    rows = []
+    cursor = 0.0
+    while cursor + scan <= duration + 0.01:
+        count_in_window = bisect_right(offsets, cursor + scan) - bisect_left(offsets, cursor)
+        rows.append((count_in_window, cursor, cursor + scan))
+        cursor += 1.0
+    if not rows:
+        return []
+
+    baseline = max(1.0, float(statistics.median(row[0] for row in rows)))
+    minimum = max(5, int(round(baseline * 1.6)))
+    spikes = []
+    for count_in_window, start, end in rows:
+        if count_in_window < minimum:
+            continue
+        unique = len(_authors(events, start, end))
+        if unique < max(3, min(12, int(count_in_window * 0.12))):
+            continue
+        peak = start + scan / 2.0
+        item = {
+            "peak": round(peak, 2),
+            "count": count_in_window,
+            "scan_window": round(scan, 2),
+            "ratio": round(count_in_window / baseline, 2),
+            "start": round(start, 2),
+            "end": round(end, 2),
+        }
+        if spikes and peak - spikes[-1]["peak"] < scan:
+            # Overlapping scan windows describe the same surge; keep the peak.
+            if count_in_window > spikes[-1]["count"]:
+                spikes[-1] = item
+            continue
+        spikes.append(item)
+    return spikes
+
+
+def _best_window(events, start, end, length, anchor):
+    """Find the densest ``length`` window of chat inside ``start``–``end``."""
+    start = max(0.0, float(start))
+    end = max(start, float(end))
+    length = min(float(length), end - start)
+    if length < 8:
+        return None
+    offsets = [float(event["offset"]) for event in events if start <= float(event["offset"]) <= end]
+    if not offsets:
+        return None
+    anchor = max(start, min(end, float(anchor)))
+    best = None
+    cursor = start
+    while cursor + length <= end + 0.01:
+        count = bisect_right(offsets, cursor + length) - bisect_left(offsets, cursor)
+        score = (count, -abs((cursor + length / 2.0) - anchor))
+        if best is None or score > best[0]:
+            best = (score, cursor)
+        cursor += 1.0
+    if not best or best[0][0] < 3:
+        return None
+    window_start = best[1]
+    window_end = window_start + length
+    return {
+        "start": window_start,
+        "end": window_end,
+        "count": best[0][0],
+        "authors": len(_authors(events, window_start, window_end)),
+    }
+
+
+def spike_candidates(events, duration, count, target=45, segments=None, spikes=None):
+    """Turn spike windows into one dense, chat-ranked moment per surge.
+
+    Each candidate sits inside the recorded ±pad window around a surge and is
+    the busiest ``target``-second slice there, which keeps the clip on the
+    moment viewers actually reacted to instead of averaging the whole window.
+    """
     duration = max(1.0, float(duration or 0))
     if not events or duration < 5:
         return []
@@ -309,121 +579,48 @@ def spike_candidates(events, duration, count, target=45, clip_mode="separate", s
         target = max(8, min(180, int(target or 45)))
     except (TypeError, ValueError):
         target = 45
-    window = min(float(target), duration)
-    if window < 8:
+    try:
+        wanted = max(1, int(count or 1))
+    except (TypeError, ValueError):
+        wanted = 1
+
+    found = spikes if spikes is not None else detect_spikes(events, duration, target)
+    if not found:
         return []
-    offsets = [float(event["offset"]) for event in events if 0 <= event["offset"] <= duration]
-    if len(offsets) < 4:
-        return []
-
-    # Detect on a short window so a burst is not averaged away by the full
-    # 30–90s clip length; then expand each peak to a complete clip.
-    scan_window = max(5.0, min(15.0, window / 3.0))
-    starts = []
-    cursor = 0.0
-    while cursor + scan_window <= duration + 0.01:
-        starts.append(cursor)
-        cursor += 1.0
-    if not starts:
-        starts = [0.0]
-
-    rows = []
-    for start in starts:
-        end = start + scan_window
-        count_in_window = bisect_right(offsets, end) - bisect_left(offsets, start)
-        rows.append((count_in_window, start, end))
-    baseline = max(1.0, float(statistics.median([row[0] for row in rows])))
-    minimum = max(5, int(round(baseline * 1.5)))
-
-    qualifying = [
-        (count_in_window, start, end)
-        for count_in_window, start, end in rows
-        if count_in_window >= minimum
-    ]
-    if not qualifying:
-        return []
-
-    qualifying.sort(key=lambda row: (-row[0], row[1]))
-    wanted = 3 if clip_mode == "multi_cut" else max(1, int(count or 1))
+    pad = float(downloader.live_spike_pad_seconds())
+    ranked = sorted(
+        found,
+        key=lambda item: (item.get("count") or 0, item.get("ratio") or 0),
+        reverse=True,
+    )
     chosen = []
-    for count_in_window, start, end in qualifying:
-        unique = len(_authors(events, start, end))
-        if unique < max(3, min(12, int(count_in_window * 0.12))):
+    for spike in ranked:
+        peak = float(spike["peak"])
+        left = max(0.0, peak - pad)
+        right = min(duration, peak + pad)
+        best = _best_window(events, left, right, target, peak)
+        if not best:
             continue
-        peak = start + scan_window / 2.0
-        clip_start = max(0.0, min(duration - window, peak - window * 0.35))
-        clip_end = clip_start + window
-        if any(clip_start < item["end"] - 1 and clip_end > item["start"] + 1 for item in chosen):
+        if any(_overlaps(best, other) for other in chosen):
             continue
+        seconds = int(round(best["end"] - best["start"]))
         chosen.append({
-            "start": clip_start,
-            "end": clip_end,
-            "peak": peak,
-            "peak_count": count_in_window,
+            "start": round(best["start"], 2),
+            "end": round(best["end"], 2),
+            "title": f"Chat spike at {_time_label(peak)}",
+            "reason": (
+                f"{spike['count']} messages in {int(spike['scan_window'])}s "
+                f"({spike['ratio']:.1f}× typical chat) — busiest {seconds}s "
+                f"inside the {int(round(pad))}s pre/post window"
+            ),
+            "transcript": _window_text(segments, best["start"], best["end"]),
+            "score": spike["ratio"],
+            "chat_peak": round(peak, 2),
         })
         if len(chosen) >= wanted:
             break
-
-    if not chosen:
-        return []
-    if clip_mode == "multi_cut":
-        return _multi_cut_candidate(chosen, duration, target, segments, baseline, scan_window)
-    return _separate_candidates(chosen, count, segments, baseline, scan_window)
-
-
-def _separate_candidates(chosen, count, segments, baseline, scan_window):
-    out = []
-    for item in chosen[:max(1, int(count or 1))]:
-        start, end = item["start"], item["end"]
-        out.append({
-            "start": round(start, 2),
-            "end": round(end, 2),
-            "title": f"Chat goes wild at {_time_label(item['peak'])}",
-            "reason": (
-                f"{item['peak_count']} chat messages in {int(scan_window)}s "
-                f"({item['peak_count'] / baseline:.1f}× typical chat)"
-            ),
-            "transcript": _window_text(segments, start, end),
-            "score": round(item["peak_count"] / baseline, 2),
-        })
-    return out
-
-
-def _multi_cut_candidate(chosen, duration, target, segments, baseline, scan_window):
-    cut_count = min(3, len(chosen))
-    if cut_count < 2:
-        return []
-    cut_length = max(8.0, float(target) / cut_count)
-    cuts = []
-    for item in chosen[:cut_count]:
-        start = max(0.0, min(duration - cut_length, item["peak"] - cut_length / 2.0))
-        if cuts and start < cuts[-1]["end"] + 1.0:
-            start = min(duration - cut_length, cuts[-1]["end"] + 1.0)
-        end = min(duration, start + cut_length)
-        if end - start >= 2.0:
-            cuts.append({
-                "start": round(start, 2),
-                "end": round(end, 2),
-            })
-    if len(cuts) < 2:
-        return []
-    total = sum(cut["end"] - cut["start"] for cut in cuts)
-    title = f"Chat spike stack · {len(cuts)} moments"
-    reason = (
-        f"{sum(item['peak_count'] for item in chosen[:cut_count])} chat messages across "
-        f"{len(cuts)} surges ({total:.0f}s total)"
-    )
-    return [{
-        "start": cuts[0]["start"],
-        "end": cuts[-1]["end"],
-        "cuts": cuts,
-        "title": title,
-        "reason": reason,
-        "transcript": " ".join(
-            _window_text(segments, cut["start"], cut["end"]) for cut in cuts
-        )[:500],
-        "score": round(sum(item["peak_count"] for item in chosen[:cut_count]) / baseline, 2),
-    }]
+    chosen.sort(key=lambda item: item["start"])
+    return chosen
 
 
 def _overlaps(a, b):

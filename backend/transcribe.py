@@ -354,6 +354,14 @@ def load_cached(job_id, user_id):
     return _load_cache(job_id, user_id)
 
 
+def clear_cache(job_id, user_id):
+    """Drop a cached transcript when its source recording is discarded."""
+    try:
+        os.remove(_cache_path(job_id, user_id))
+    except OSError:
+        pass
+
+
 def transcribe(video_path: str, job_id: int, user_id: int, stage_cb, url: str | None = None,
                cancel_cb=None, info=None, try_online=True):
     """Return timestamped segments, preferring cached/online English captions."""
