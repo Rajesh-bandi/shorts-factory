@@ -31,6 +31,9 @@ COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").lower() in ("1", "true", "ye
 COOKIE_SAMESITE = os.getenv("COOKIE_SAMESITE", "lax").strip().lower()
 if COOKIE_SAMESITE not in ("lax", "strict", "none"):
     COOKIE_SAMESITE = "lax"
+# Optional model used when a user leaves the AI model field blank. Blank user
+# values otherwise fall back to OmniRoute's "auto" router.
+LLM_DEFAULT_MODEL = os.getenv("LLM_DEFAULT_MODEL", "").strip()
 
 # Registration is invite-only when a code is configured. The first account can
 # always be created so a fresh deployment is not locked out.

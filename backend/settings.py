@@ -94,7 +94,7 @@ def llm_config(user_id):
     return {
         "base_url": get(user_id, "llm_base_url") or "https://api.openai.com/v1",
         "api_key": get(user_id, "llm_api_key") or "",
-        "model": get(user_id, "llm_model") or "",
+        "model": get(user_id, "llm_model") or config.LLM_DEFAULT_MODEL or "",
     }
 
 

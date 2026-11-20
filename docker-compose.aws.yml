@@ -35,6 +35,7 @@ services:
       FORWARDED_ALLOW_IPS: "*"
       FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-}
       COOKIE_SAMESITE: ${COOKIE_SAMESITE:-lax}
+      LLM_DEFAULT_MODEL: ${LLM_DEFAULT_MODEL:-}
       HF_HOME: /data/.cache
       YTDLP_COOKIES_FILE: /secrets/youtube-cookies.txt
       YTDLP_PROXY: ${YTDLP_PROXY:-}

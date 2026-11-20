@@ -636,8 +636,9 @@ ssh -i shorts-deploy.pem -L 20128:127.0.0.1:20128 ubuntu@52.207.181.21
 
 Inside the app, point the AI settings at `http://omniroute:20128/api/v1` with a
 key you create in the OmniRoute dashboard. The model field is optional: leave
-it blank to send `auto` and let OmniRoute pick a healthy provider, or enter a
-provider model such as `openai/gpt-4o-mini`. The container URL works because the
+it blank to use `LLM_DEFAULT_MODEL`, or OmniRoute's `auto` router when that is
+empty. You can also enter a provider model such as
+`antigravity/gemini-3.8-flash-low`. The container URL works because the
 backend and OmniRoute share the compose network.
 
 ### Housekeeping

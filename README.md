@@ -158,8 +158,8 @@ Open **Settings** in the app:
    callback.
 3. **AI** — enter your hosted Omniroute server's Base URL (for example
    `https://ai.example.com/v1`), API key and optional model. Leaving the model
-   blank sends `auto`, so OmniRoute picks a healthy provider; set an exact model
-   name for endpoints that require one. The app no longer bundles
+   blank uses `LLM_DEFAULT_MODEL` when set, otherwise OmniRoute's `auto` router.
+   Set an exact model name for endpoints that require one. The app no longer bundles
    Omniroute, so installers are smaller and start faster; the server can run on
    AWS EC2 and keep its provider state there. Any other OpenAI-compatible
    endpoint also works. Without it, the pipeline falls back to local heuristics.
@@ -212,6 +212,7 @@ the local server to a public network.
 | `APP_MODE` | `local` (default) or `multi` for the invite-only server mode |
 | `APP_DOMAIN` | Hostname Caddy obtains a certificate for (AWS compose) |
 | `APP_BASE_URL` | Origin used by OAuth callbacks |
+| `FRONTEND_BASE_URL` | Public frontend origin when hosted separately (defaults to `APP_BASE_URL`) |
 | `OAUTH_REDIRECT_URI` | Exact Google callback URL |
 | `APP_SECRET_KEY` | Encryption key for per-workspace secrets |
 | `DATA_DIR` | Database and media root |
@@ -223,6 +224,8 @@ the local server to a public network.
 | `MAX_USERS` | Account cap in multi mode (default 4) |
 | `REGISTRATION_INVITE_CODE` | Required after the first account; share only with invited users |
 | `COOKIE_SECURE` | Set `true` behind HTTPS in multi mode |
+| `COOKIE_SAMESITE` | `lax` (same site) or `none` for a separate frontend/API origin |
+| `LLM_DEFAULT_MODEL` | Model used when a member leaves the AI model blank |
 | `MEDIA_RETENTION_DAYS` | Reserved cleanup setting; not enforced by the backend yet (0 = keep) |
 | `JOB_SOURCE_RETENTION_DAYS` | Reserved source-cleanup setting; not enforced yet (0 = keep) |
 | `DEFAULT_JOB_SECONDS` | Fallback ETA before enough job history exists |
