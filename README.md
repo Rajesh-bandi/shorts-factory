@@ -157,8 +157,9 @@ Open **Settings** in the app:
    builds open Google in your normal browser; the local backend receives the
    callback.
 3. **AI** — enter your hosted Omniroute server's Base URL (for example
-   `https://ai.example.com/v1`), API key and optional model (blank lets the
-   gateway use its default). The app no longer bundles
+   `https://ai.example.com/v1`), API key and optional model. Leaving the model
+   blank sends `auto`, so OmniRoute picks a healthy provider; set an exact model
+   name for endpoints that require one. The app no longer bundles
    Omniroute, so installers are smaller and start faster; the server can run on
    AWS EC2 and keep its provider state there. Any other OpenAI-compatible
    endpoint also works. Without it, the pipeline falls back to local heuristics.

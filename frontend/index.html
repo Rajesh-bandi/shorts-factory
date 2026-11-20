@@ -587,7 +587,7 @@
             <p class="sub tight">Point this at your hosted Omniroute server on AWS EC2, or any OpenAI-compatible endpoint. Nothing is bundled with the app, so installers stay small and launches stay fast. Without it, highlights come from transcript heuristics.</p>
             <div class="row">
               <div class="field"><label for="llm_base_url">Base URL</label><input id="llm_base_url" type="text" placeholder="https://your-omniroute-host/v1" spellcheck="false"><p class="hint">Include the <code>/v1</code> path. HTTPS is recommended.</p></div>
-              <div class="field"><label for="llm_model">Model (optional)</label><input id="llm_model" type="text" placeholder="leave blank for the server default" spellcheck="false"><p class="hint">Optional. When blank, the request omits <code>model</code> and your gateway picks its default.</p></div>
+              <div class="field"><label for="llm_model">Model (optional)</label><input id="llm_model" type="text" placeholder="leave blank for auto" spellcheck="false"><p class="hint">Optional. Blank sends <code>auto</code>, so OmniRoute picks a healthy provider. Set a model if your endpoint requires an exact name.</p></div>
             </div>
             <div class="field"><label for="llm_api_key">API key <span class="saved-tag" id="llmKeySaved" hidden>saved</span></label><input id="llm_api_key" type="password" placeholder="key configured on your server" spellcheck="false" autocomplete="new-password"><p class="hint">Stored locally and sent only to the base URL above. If your server has auth disabled, enter any placeholder value.</p></div>
             <div class="test-row">

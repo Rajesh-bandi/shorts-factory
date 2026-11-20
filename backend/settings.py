@@ -105,10 +105,14 @@ def llm_available(user_id):
 
 
 def llm_body(cfg, messages, **options):
-    """Build an OpenAI-compatible body, omitting an empty model."""
+    """Build an OpenAI-compatible body.
+
+    An empty model means "let the gateway choose". OmniRoute understands the
+    literal ``auto`` routing model, so use that instead of omitting the field
+    (its API rejects requests without a model).
+    """
     body = {"messages": messages, **options}
-    if cfg.get("model"):
-        body["model"] = cfg["model"]
+    body["model"] = cfg.get("model") or "auto"
     return body
 
 
