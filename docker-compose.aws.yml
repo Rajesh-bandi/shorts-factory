@@ -76,7 +76,7 @@ services:
     restart: unless-stopped
     stop_grace_period: 40s
     environment:
-      OMNIROUTE_MEMORY_MB: "4096"
+      OMNIROUTE_MEMORY_MB: "3072"
     # Leave most of the 8 GB host for Postgres, ffmpeg and Whisper.
     mem_limit: 3g
     ports:

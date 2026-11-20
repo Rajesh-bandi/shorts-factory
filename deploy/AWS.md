@@ -488,9 +488,10 @@ recommended unless all four have static addresses.
   and expand it online if live clipping is heavy (a 30-minute 1080p recording
   can be 1–2 GB). Retention env vars are not enforced, so delete old jobs in
   the UI.
-- OmniRoute is capped at 4 GB (`OMNIROUTE_MEMORY_MB=4096`), which is ample
-  for one or two light chat clients. Raise it only if you use long coding
-  agent sessions.
+- OmniRoute has a 3 GB container ceiling
+  (`mem_limit: 3g`, `OMNIROUTE_MEMORY_MB=3072`), which is ample for one or two
+  light chat clients and keeps Postgres/ffmpeg/Whisper protected. Raise it
+  only if you use long coding agent sessions.
 - Stopping the instance at night is safe. Postgres, media, Caddy certificates
   and OmniRoute state are all on the root volume; jobs that were running are
   requeued on the next boot. Always stop from the AWS console, not with
@@ -549,3 +550,77 @@ Take an EBS snapshot before a schema-changing update. The app uses
    `LIVE_RECORD_STALL_SECONDS` (default 120) and fails the job with a clear
    error instead of holding the analysis lock for 30 minutes. Raise the value
    only if your streams routinely need longer reconnects.
+
+---
+
+## 15. The deployment as built
+
+These are the live values for the reference deployment in `us-east-1`.
+
+| Item | Value |
+| --- | --- |
+| Instance | `i-06ecb5d56814d39b5` (`m7i-flex.large`, us-east-1f) |
+| Elastic IP | `52.207.181.21` (`eipalloc-0a6da4fa610433f78`) |
+| Public URL | `https://shorts.52.207.181.21.sslip.io` |
+| Owner login | `bandirajesh209@gmail.com` (password is kept out of this repo) |
+| Registration invite | `REGISTRATION_INVITE_CODE` in `~/yt-short-maker/.env` on the server |
+| SSH key | `shorts-deploy.pem` (holds the `shorts-deploy` key pair) |
+| Repo checkout | `/home/ubuntu/yt-short-maker` |
+| Persistent data | `/opt/shorts` on the 100 GB gp3 root volume |
+
+`sslip.io` resolves the hostname to the Elastic IP, so TLS keeps working
+across stop/start cycles. To move to a real domain later, point an `A` record
+at the Elastic IP, change `APP_DOMAIN`, `APP_BASE_URL` and `OAUTH_REDIRECT_URI`
+in `.env`, then `docker compose -f docker-compose.aws.yml up -d caddy`.
+
+### Nightly stop and start
+
+Stop from the AWS console (Instance state → Stop instance) or with the CLI.
+Never use `sudo shutdown -h now`; the console stop lets EBS flush cleanly.
+
+```bash
+aws ec2 stop-instances  --region us-east-1 --instance-ids i-06ecb5d56814d39b5
+aws ec2 start-instances --region us-east-1 --instance-ids i-06ecb5d56814d39b5
+```
+
+Verify after a start (about 30–45 seconds to healthy):
+
+```bash
+aws ec2 wait instance-status-ok --region us-east-1 \
+  --instance-ids i-06ecb5d56814d39b5
+curl -fsS https://shorts.52.207.181.21.sslip.io/healthz
+ssh -i shorts-deploy.pem ubuntu@52.207.181.21 \
+  'cd ~/yt-short-maker && docker compose -f docker-compose.aws.yml ps'
+```
+
+What recovers automatically: Docker starts at boot, and all five containers
+(`db`, `backend`, `frontend`, `caddy`, `omniroute`) use
+`restart: unless-stopped`. Postgres data, media, certificates and OmniRoute
+state live on the root volume, and jobs interrupted by a stop are requeued on
+the next boot. The Elastic IP does not change.
+
+### OmniRoute
+
+OmniRoute listens only on `127.0.0.1:20128`. Open its dashboard through an SSH
+tunnel, then configure providers yourself in the UI:
+
+```bash
+ssh -i shorts-deploy.pem -L 20128:127.0.0.1:20128 ubuntu@52.207.181.21
+# browse http://localhost:20128
+```
+
+Inside the app, point the AI settings at `http://omniroute:20128/v1` with a
+key you create in the OmniRoute dashboard. The container URL works because the
+backend and OmniRoute share the compose network.
+
+### Housekeeping
+
+- The AWS Budget `shorts-factory-monthly` emails alerts to
+  `bandirajesh209@gmail.com`; confirm the subscription from the first AWS
+  Budget email, or alerts will not arrive.
+- SSH is allowed only from `106.221.185.15/32`. If the home IP changes, update
+  inbound port 22 on `sg-024b4c65f2d9a0f5d`; 80/443 stay open.
+- Refresh `/opt/shorts/secrets/youtube-cookies.txt` (mode `600`) when YouTube
+  downloads start failing. Re-export it from a signed-in browser; no restart
+  is needed.
+- Take an EBS snapshot of the root volume before schema-changing updates.
