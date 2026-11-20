@@ -100,7 +100,7 @@ FRONTEND_BASE_URL=https://app.<domain>
 OAUTH_REDIRECT_URI=https://api.<domain>/api/auth/callback
 
 COOKIE_SECURE=true
-COOKIE_SAMESITE=none
+COOKIE_SAMESITE=lax
 ```
 
 Then recreate the backend and Caddy:
@@ -110,11 +110,11 @@ cd ~/yt-short-maker
 docker compose -f docker-compose.aws.yml up -d backend caddy
 ```
 
-`FRONTEND_BASE_URL` controls the post-OAuth redirect. `COOKIE_SAMESITE=none`
-is required while the frontend uses a `*.vercel.app` URL because that is a
-different site from the API; it only works with `COOKIE_SECURE=true` over
-HTTPS. After `app.<domain>` and `api.<domain>` are live, switch it to `lax`
-(same site) for more reliable cookies.
+`FRONTEND_BASE_URL` controls the post-OAuth redirect. `lax` works because
+`app.<domain>` and `api.<domain>` are the same site (same registrable domain),
+so the browser sends the session cookie on API and media requests. The current
+`*.vercel.app` deployment needs `COOKIE_SAMESITE=none` because it is a
+different site from the `sslip.io` API; do not keep `none` after the cutover.
 
 ## 5. Google OAuth callback
 
