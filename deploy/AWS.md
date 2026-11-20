@@ -130,8 +130,8 @@ enough. The file must contain `LOGIN_INFO` and a first-party session cookie
    ```
    The script exports the cookies with `yt-dlp --cookies-from-browser`, checks
    for `LOGIN_INFO` + `SID`, tests the file from EC2, installs it at
-   `/opt/shorts/secrets/youtube-cookies.txt` with mode `600`, and clears the
-   cached jar so the next job uses the new file.
+   `/opt/shorts/data/secrets/youtube-cookies.txt` with mode `600`, and clears
+   the cached jar so the next job uses the new file.
 3. Optional weekly refresh:
    ```powershell
    schtasks /Create /SC WEEKLY /TN "Shorts YouTube cookies" ^
@@ -143,9 +143,11 @@ enough. The file must contain `LOGIN_INFO` and a first-party session cookie
 **Manual refresh:**
 
 ```bash
+ssh -i ~/.ssh/shorts-deploy.pem ubuntu@shorts.example.com \
+  'mkdir -p /opt/shorts/data/secrets && chmod 700 /opt/shorts/data/secrets'
 scp -i ~/.ssh/shorts-deploy.pem cookies.txt \
   ubuntu@shorts.example.com:/opt/shorts/data/secrets/youtube-cookies.txt
-ssh ubuntu@shorts.example.com \
+ssh -i ~/.ssh/shorts-deploy.pem ubuntu@shorts.example.com \
   'chmod 600 /opt/shorts/data/secrets/youtube-cookies.txt'
 ```
 
