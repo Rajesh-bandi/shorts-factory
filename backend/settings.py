@@ -99,8 +99,17 @@ def llm_config(user_id):
 
 
 def llm_available(user_id):
-    cfg = llm_config(user_id)
-    return bool(cfg["api_key"] and cfg["model"])
+    # A model is optional: gateways such as OmniRoute can choose their own
+    # default when the request omits ``model``.
+    return bool(llm_config(user_id)["api_key"])
+
+
+def llm_body(cfg, messages, **options):
+    """Build an OpenAI-compatible body, omitting an empty model."""
+    body = {"messages": messages, **options}
+    if cfg.get("model"):
+        body["model"] = cfg["model"]
+    return body
 
 
 def get(user_id, key, default=None):

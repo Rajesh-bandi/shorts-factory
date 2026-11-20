@@ -1,5 +1,5 @@
 /* Shorts Factory — event wiring and application startup. */
-import { state, $, $$, VIEWS, api } from "./core.js";
+import { state, $, $$, VIEWS, api, API_BASE } from "./core.js";
 import { paintIcons } from "./icons.js";
 import {
   prefs, applyPrefsUI, renderTweaks, setPref, openTweaks, closeTweaks,
@@ -303,7 +303,7 @@ function bind() {
   window.addEventListener("beforeunload", () => {
     if (!state.prefsDirty) return;
     try {
-      navigator.sendBeacon("/api/prefs", new Blob([JSON.stringify({ prefs })], { type: "application/json" }));
+      navigator.sendBeacon(`${API_BASE}/api/prefs`, new Blob([JSON.stringify({ prefs })], { type: "application/json" }));
     } catch (_) { /* local copy is already saved */ }
   });
 

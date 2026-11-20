@@ -23,7 +23,7 @@ def _llm_chat(user_id, messages, timeout=120):
     resp = requests.post(
         url,
         headers={"Authorization": f"Bearer {cfg['api_key']}"},
-        json={"model": cfg["model"], "messages": messages, "temperature": 0.4},
+        json=settings.llm_body(cfg, messages, temperature=0.4),
         timeout=timeout,
     )
     resp.raise_for_status()

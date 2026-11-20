@@ -1,4 +1,4 @@
-import { state, $, $$, api, truthy, timeLabel, jobEta, statusMeta, stageLabel } from "./core.js";
+import { state, $, $$, api, truthy, timeLabel, jobEta, statusMeta, stageLabel, API_BASE } from "./core.js";
 import { toast } from "./ui.js";
 import { go } from "./router.js";
 import { pollJobs } from "./jobs.js";
@@ -283,7 +283,7 @@ function renderManualPanel() {
   if (wrap && video) {
     wrap.hidden = !canPreview;
     if (canPreview) {
-      const src = `/media/${encodeURIComponent(job.preview)}?v=${job.updated_at || job.id}`;
+      const src = `${API_BASE}/media/${encodeURIComponent(job.preview)}?v=${job.updated_at || job.id}`;
       if (!video.src.endsWith(src)) video.src = src;
     }
   }

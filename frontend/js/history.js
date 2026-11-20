@@ -1,5 +1,5 @@
 /* ---------- history ---------- */
-import { state, $, esc, api, fmtBytes, timeLabel, timeAgo } from "./core.js";
+import { state, $, esc, api, fmtBytes, timeLabel, timeAgo, API_BASE } from "./core.js";
 import { icon } from "./icons.js";
 import { toast, showModal, closeModal, confirmDialog, copy } from "./ui.js";
 import { pollJobs, ensureEdits, renderJobs } from "./jobs.js";
@@ -48,7 +48,7 @@ function renderHistory() {
   }
   grid.innerHTML = list.map((c) => {
     const on = !!state.historySel[c.id];
-    const thumb = c.thumb && c.exists ? `/api/clips/${c.id}/thumb` : "";
+    const thumb = c.thumb && c.exists ? `${API_BASE}/api/clips/${c.id}/thumb` : "";
     const uploading = c.upload_state === "uploading";
     const failedUpload = c.upload_state === "error";
     const status = !c.exists
@@ -94,7 +94,7 @@ async function openHistoryClip(id) {
     title: "Clip details",
     wide: true,
     body: `<div class="history-detail">
-      ${clip.exists ? `<video class="clip-video" controls autoplay playsinline src="/api/clips/${clip.id}/file?v=${Date.now()}"></video>` : `<div class="publish-note">${icon("alert")}<span>This clip's local file is missing. Metadata and path are still available below.</span></div>`}
+      ${clip.exists ? `<video class="clip-video" controls autoplay playsinline src="${API_BASE}/api/clips/${clip.id}/file?v=${Date.now()}"></video>` : `<div class="publish-note">${icon("alert")}<span>This clip's local file is missing. Metadata and path are still available below.</span></div>`}
       <p class="hint">${esc(clip.title)} · ${timeLabel(clip.duration)} · ${clip.uploaded ? "Published to YouTube" : "Saved locally"} · job #${clip.job_id} · QA ${esc(clip.qa_status || "pending")}</p>
       <div class="field">
         <div class="field-head"><label for="historyTitle">AI title</label><button class="btn ghost sm" type="button" data-copy-field="#historyTitle">${icon("copy")}Copy</button></div>
@@ -117,7 +117,7 @@ async function openHistoryClip(id) {
       <p class="hint" id="historyAiStatus">Writing AI title options, description and tags…</p>
       ${clip.url ? `<p class="hint"><a href="${esc(clip.url)}" target="_blank" rel="noopener">Open on YouTube ↗</a></p>` : ""}
     </div>`,
-    foot: `${clip.uploaded ? `<button class="btn ghost danger-text" id="btnDeleteYt">${icon("trash")}Remove from YouTube</button>` : `<button class="btn primary" id="btnUploadFromView">${icon("youtube")}Upload with AI</button>`}<a class="btn ghost" href="/api/clips/${clip.id}/export">${icon("download")}Download MP4</a>`
+    foot: `${clip.uploaded ? `<button class="btn ghost danger-text" id="btnDeleteYt">${icon("trash")}Remove from YouTube</button>` : `<button class="btn primary" id="btnUploadFromView">${icon("youtube")}Upload with AI</button>`}<a class="btn ghost" href="${API_BASE}/api/clips/${clip.id}/export">${icon("download")}Download MP4</a>`
   });
   if ($("#btnUploadFromView")) $("#btnUploadFromView").onclick = () => { closeModal(); openUploadModal(clip.id); };
   if ($("#btnDeleteYt")) $("#btnDeleteYt").onclick = async () => {

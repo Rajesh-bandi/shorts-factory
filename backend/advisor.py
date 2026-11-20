@@ -66,11 +66,11 @@ Give short, concrete, prioritized advice. Reply with ONLY a JSON object:
         resp = requests.post(
             cfg["base_url"].rstrip("/") + "/chat/completions",
             headers={"Authorization": f"Bearer {cfg['api_key']}"},
-            json={
-                "model": cfg["model"],
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0.6,
-            },
+            json=settings.llm_body(
+                cfg,
+                [{"role": "user", "content": prompt}],
+                temperature=0.6,
+            ),
             timeout=90,
         )
         resp.raise_for_status()

@@ -1,5 +1,13 @@
 /* Shorts Factory — shared state, formatting and API helpers. */
 
+const runtimeConfig = window.SHORTS_CONFIG || {};
+
+/** Absolute backend origin when the frontend is hosted separately. */
+export const API_BASE = String(runtimeConfig.apiBase || "").replace(/\/+$/, "");
+
+/** Prefix a backend path (starting with /) with the configured origin. */
+export const apiUrl = (path) => `${API_BASE}${path}`;
+
 export const VIEWS = ["dashboard", "create", "jobs", "history", "analytics", "settings"];
 
 export const state = {
@@ -104,7 +112,12 @@ export function setUnauthorizedHandler(fn) {
 }
 
 export async function api(path, opts = {}) {
-  const res = await fetch(`/api${path}`, { headers: { "Content-Type": "application/json" }, ...opts });
+  const headers = { "Content-Type": "application/json", ...(opts.headers || {}) };
+  const res = await fetch(apiUrl(`/api${path}`), {
+    credentials: "include",
+    ...opts,
+    headers,
+  });
   const text = await res.text();
   let body = null;
   try { body = text ? JSON.parse(text) : null; } catch (_) { body = text; }

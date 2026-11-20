@@ -271,7 +271,8 @@ def run_analyze(job_id):
                     # preference only controls normal VOD analysis.
                     db.log(
                         job_id,
-                        "Live stream detected — chat spikes are automatic; recording only around them.",
+                        "Live stream detected — watching chat for a spike and recording only "
+                        f"~{downloader.live_spike_pad_seconds()}s after the requested number of spikes.",
                     )
                     try:
                         stream_urls = downloader.resolve_stream_urls(job["url"])

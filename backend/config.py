@@ -15,6 +15,9 @@ MEDIA_DIR = DATA_DIR / "media"
 DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DATA_DIR / 'shorts.db'}")
 
 APP_BASE_URL = os.getenv("APP_BASE_URL", "http://127.0.0.1:8787").rstrip("/")
+# Public URL of the frontend when it is hosted separately (for example Vercel).
+# Defaults to APP_BASE_URL for same-origin deployments.
+FRONTEND_BASE_URL = (os.getenv("FRONTEND_BASE_URL", "").strip().rstrip("/") or APP_BASE_URL)
 APP_MODE = os.getenv("APP_MODE", "local").strip().lower()
 LOCAL_MODE = APP_MODE != "multi"
 LOCAL_USER_ID = int(os.getenv("LOCAL_USER_ID", "0") or 0)
@@ -23,6 +26,11 @@ LOCAL_USER_NAME = os.getenv("LOCAL_USER_NAME", "Local Studio").strip() or "Local
 SESSION_COOKIE = os.getenv("SESSION_COOKIE", "sf_session")
 SESSION_TTL_DAYS = int(os.getenv("SESSION_TTL_DAYS", "30"))
 COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").lower() in ("1", "true", "yes", "on")
+# "none" is required when the frontend and API are on different sites, and
+# browsers only accept it together with Secure.
+COOKIE_SAMESITE = os.getenv("COOKIE_SAMESITE", "lax").strip().lower()
+if COOKIE_SAMESITE not in ("lax", "strict", "none"):
+    COOKIE_SAMESITE = "lax"
 
 # Registration is invite-only when a code is configured. The first account can
 # always be created so a fresh deployment is not locked out.

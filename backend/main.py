@@ -17,6 +17,7 @@ from contextlib import asynccontextmanager
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -50,11 +51,19 @@ app.add_middleware(GZipMiddleware, minimum_size=900)
 # ---------- security / request middleware ----------
 _ALLOWED_ORIGINS = {
     config.APP_BASE_URL,
+    config.FRONTEND_BASE_URL,
     f"http://127.0.0.1:{config.PORT}",
     f"http://localhost:{config.PORT}",
     "http://127.0.0.1:8787",
     "http://localhost:8787",
 }
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=sorted(_ALLOWED_ORIGINS),
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 _STATIC_CACHE_EXTS = (".css", ".svg", ".png", ".jpg", ".jpeg", ".webp", ".woff2")
 _STATIC_REVALIDATE_EXTS = (".js", ".mjs")
 
@@ -106,7 +115,7 @@ def _set_session(response: Response, token: str):
         max_age=config.SESSION_TTL_DAYS * 86400,
         httponly=True,
         secure=config.COOKIE_SECURE,
-        samesite="lax",
+        samesite=config.COOKIE_SAMESITE,
         path="/",
     )
 
@@ -235,14 +244,14 @@ def auth_start(user: CurrentUser):
 @app.get("/api/auth/callback")
 def auth_callback(code: str = "", state: str = "", error: str = ""):
     if error:
-        return RedirectResponse(f"{config.APP_BASE_URL}/?youtube=error#settings/channel")
+        return RedirectResponse(f"{config.FRONTEND_BASE_URL}/?youtube=error#settings/channel")
     if not code or not state:
-        return RedirectResponse(f"{config.APP_BASE_URL}/?youtube=error#settings/channel")
+        return RedirectResponse(f"{config.FRONTEND_BASE_URL}/?youtube=error#settings/channel")
     try:
         uploader.finish_oauth(state, code)
-        return RedirectResponse(f"{config.APP_BASE_URL}/?youtube=connected#settings/channel")
+        return RedirectResponse(f"{config.FRONTEND_BASE_URL}/?youtube=connected#settings/channel")
     except Exception:
-        return RedirectResponse(f"{config.APP_BASE_URL}/?youtube=error#settings/channel")
+        return RedirectResponse(f"{config.FRONTEND_BASE_URL}/?youtube=error#settings/channel")
 
 
 @app.get("/api/auth/status")
@@ -1069,7 +1078,7 @@ def health(user: CurrentUser):
 @app.post("/api/ai/test")
 def ai_test(user: CurrentUser):
     if not settings.llm_available(user["id"]):
-        raise HTTPException(400, "Add a Base URL, API key and model first")
+        raise HTTPException(400, "Add a Base URL and API key first")
     import requests
     cfg = settings.llm_config(user["id"])
     started = time.time()
@@ -1077,8 +1086,12 @@ def ai_test(user: CurrentUser):
         resp = requests.post(
             cfg["base_url"].rstrip("/") + "/chat/completions",
             headers={"Authorization": f"Bearer {cfg['api_key']}"},
-            json={"model": cfg["model"], "messages": [{"role": "user", "content": "Reply with the single word: ready"}],
-                  "temperature": 0, "max_tokens": 96},
+            json=settings.llm_body(
+                cfg,
+                [{"role": "user", "content": "Reply with the single word: ready"}],
+                temperature=0,
+                max_tokens=96,
+            ),
             timeout=120,
         )
         resp.raise_for_status()
@@ -1087,7 +1100,7 @@ def ai_test(user: CurrentUser):
         reply = str((choices[0] if choices else {}).get("message", {}).get("content") or "").strip()
         if not str(reply).strip():
             raise HTTPException(400, "AI endpoint returned an empty response")
-        return {"ok": True, "model": data.get("model") or cfg["model"], "reply": reply[:200],
+        return {"ok": True, "model": data.get("model") or cfg["model"] or "server default", "reply": reply[:200],
                 "ms": int((time.time() - started) * 1000)}
     except HTTPException:
         raise

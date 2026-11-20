@@ -1,4 +1,4 @@
-import { state, $, esc, api, elapsedLabel, jobEta, timeAgo, jobOpt, optionsHtml, statusMeta, stageLabel, timeLabel } from "./core.js";
+import { state, $, esc, api, elapsedLabel, jobEta, timeAgo, jobOpt, optionsHtml, statusMeta, stageLabel, timeLabel, API_BASE } from "./core.js";
 import { icon } from "./icons.js";
 import { toast, showModal, confirmDialog, confetti } from "./ui.js";
 import { go } from "./router.js";
@@ -156,7 +156,7 @@ function uploadsSection(j) {
   return `<div class="uploads">${j.uploads.map((u) => {
     const file = u.path ? String(u.path).split("/").pop() : "";
     const thumb = u.thumb ? String(u.thumb).split("/").pop() : "";
-    const thumbSrc = u.clip_id ? `/api/clips/${u.clip_id}/thumb` : (thumb ? `/media/${encodeURIComponent(thumb)}` : "");
+    const thumbSrc = u.clip_id ? `${API_BASE}/api/clips/${u.clip_id}/thumb` : (thumb ? `${API_BASE}/media/${encodeURIComponent(thumb)}` : "");
     const qa = u.qa_status && u.qa_status !== "pending" ? `<span class="pill ${u.qa_status === "pass" ? "ok" : u.qa_status === "failed" ? "bad" : "muted"}">QA ${esc(u.qa_status)}</span>` : "";
     return `<div class="upload">
       <div class="up-thumb">${thumbSrc ? `<img src="${thumbSrc}" alt="">` : icon("film")}</div>
@@ -244,7 +244,7 @@ function openPreview(id, idx) {
     showModal({
       title: `Source preview · ${start}s`,
       wide: true,
-      body: `<video id="sourcePreviewVideo" class="clip-video" controls autoplay playsinline preload="metadata" src="/media/${encodeURIComponent(job.source)}?v=${fresh}"></video><p class="hint" style="margin-top:10px">Previewing the local source recording. The render crops this to 9:16.</p>`
+      body: `<video id="sourcePreviewVideo" class="clip-video" controls autoplay playsinline preload="metadata" src="${API_BASE}/media/${encodeURIComponent(job.source)}?v=${fresh}"></video><p class="hint" style="margin-top:10px">Previewing the local source recording. The render crops this to 9:16.</p>`
     });
     const video = document.getElementById("sourcePreviewVideo");
     if (!video) return;
@@ -261,11 +261,11 @@ const youtubeId = (url) => { const m = String(url || "").match(/(?:v=|youtu\.be\
 function openClip(file) {
   // Break browser caches when a job is re-rendered under the same filename.
   const fresh = `${Date.now()}`;
-  showModal({ title: "Rendered clip", wide: true, body: `<video class="clip-video" controls autoplay playsinline src="/media/${encodeURIComponent(file)}?v=${fresh}"></video><p class="hint" style="margin-top:8px">${esc(file)}</p>` });
+  showModal({ title: "Rendered clip", wide: true, body: `<video class="clip-video" controls autoplay playsinline src="${API_BASE}/media/${encodeURIComponent(file)}?v=${fresh}"></video><p class="hint" style="margin-top:8px">${esc(file)}</p>` });
 }
 function openStoredClip(id, title = "Rendered clip") {
   const fresh = `${Date.now()}`;
-  showModal({ title, wide: true, body: `<video class="clip-video" controls autoplay playsinline src="/api/clips/${encodeURIComponent(id)}/file?v=${fresh}"></video><p class="hint" style="margin-top:8px">job clip #${esc(id)}</p>` });
+  showModal({ title, wide: true, body: `<video class="clip-video" controls autoplay playsinline src="${API_BASE}/api/clips/${encodeURIComponent(id)}/file?v=${fresh}"></video><p class="hint" style="margin-top:8px">job clip #${esc(id)}</p>` });
 }
 async function handleJobClick(e) {
   const openEl = e.target.closest("[data-open-job]");

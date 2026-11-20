@@ -28,7 +28,7 @@ def _fallback_description(clip, job, platform="youtube"):
 
 def _config(user_id):
     cfg = settings.llm_config(user_id)
-    if not (cfg["api_key"] and cfg["model"]):
+    if not cfg["api_key"]:
         return None
     return cfg
 
@@ -39,11 +39,11 @@ def _chat(cfg, prompt, timeout=90):
     resp = requests.post(
         cfg["base_url"].rstrip("/") + "/chat/completions",
         headers={"Authorization": f"Bearer {cfg['api_key']}"},
-        json={
-            "model": cfg["model"],
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.7,
-        },
+        json=settings.llm_body(
+            cfg,
+            [{"role": "user", "content": prompt}],
+            temperature=0.7,
+        ),
         timeout=timeout,
     )
     resp.raise_for_status()

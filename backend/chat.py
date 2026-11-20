@@ -424,7 +424,11 @@ class LiveSpikeMonitor:
         self._read_new(elapsed)
         self._detect(elapsed)
         if self.spikes:
-            last = self.spikes[-1]["peak"]
+            # Stop once the requested number of spikes has been recorded with
+            # its post-pad. Waiting for *every* later spike is what turned a
+            # 45-second clip into a 30-minute capture on busy chats.
+            needed = self.spikes[: self.count]
+            last = max(spike["peak"] for spike in needed)
             return elapsed >= min(self.max_seconds, last + self.pad)
         if (
             self.capture is not None

@@ -168,8 +168,8 @@ set them explicitly if you want different bounds:
 
 ```dotenv
 LIVE_CHAT_SCAN_SECONDS=300      # watch chat up to 5 min for the first spike
-LIVE_SPIKE_PAD_SECONDS=300      # record 5 min before/after each spike
-LIVE_MAX_CAPTURE_SECONDS=1800   # hard cap: 30 min per live job
+LIVE_SPIKE_PAD_SECONDS=60       # record 60 s after each spike (no rewind on live)
+LIVE_MAX_CAPTURE_SECONDS=900    # hard safety cap: 15 min per live job
 LIVE_RECORD_STALL_SECONDS=120   # fail if ffmpeg writes nothing for 2 min
 ```
 
@@ -635,7 +635,9 @@ ssh -i shorts-deploy.pem -L 20128:127.0.0.1:20128 ubuntu@52.207.181.21
 ```
 
 Inside the app, point the AI settings at `http://omniroute:20128/api/v1` with a
-key you create in the OmniRoute dashboard. The container URL works because the
+key you create in the OmniRoute dashboard. The model field is optional: leave
+it blank to let OmniRoute choose its configured default, or enter a provider
+model such as `openai/gpt-4o-mini`. The container URL works because the
 backend and OmniRoute share the compose network.
 
 ### Housekeeping

@@ -1,5 +1,5 @@
 /* ---------- appearance ---------- */
-import { state, $, $$ } from "./core.js";
+import { state, $, $$, API_BASE } from "./core.js";
 import { icon } from "./icons.js";
 import { restoreFocus, trapTab } from "./focus.js";
 
@@ -35,12 +35,13 @@ function setPref(patch) {
 function applyServerPrefs() {
   if (!state.appStarted) return;
   const snapshot = { ...prefs };
-  fetch("/api/prefs", {
+  fetch(`${API_BASE}/api/prefs`, {
     method: "POST",
+    credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ prefs: snapshot }),
     keepalive: true,
-  }).then(() => { state.prefsDirty = false; }).catch(() => { /* offline — local copy is still saved */ });
+  }).then(() => { state.prefsDirty = false; }).catch(() => { /* offline - local copy is still saved */ });
 }
 function schedulePrefsSave() {
   if (!state.appStarted) return;

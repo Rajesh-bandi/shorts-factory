@@ -221,13 +221,18 @@ def live_chat_scan_seconds() -> int:
 
 
 def live_spike_pad_seconds() -> int:
-    """How much video to record before and after every chat spike."""
-    return _env_seconds("LIVE_SPIKE_PAD_SECONDS", 300, 30, 900)
+    """How much video to record after every chat spike.
+
+    Live streams cannot be rewound without DVR, so the clip is cut from the
+    moments after chat reacts. Keep this short: 60 seconds is enough for a
+    45-second vertical clip and avoids recording long dead air after a spike.
+    """
+    return _env_seconds("LIVE_SPIKE_PAD_SECONDS", 60, 30, 900)
 
 
 def live_max_capture_seconds() -> int:
-    """Hard cap for a live capture, even when chat keeps spiking."""
-    return _env_seconds("LIVE_MAX_CAPTURE_SECONDS", 1800, 120, 7200)
+    """Hard safety cap for one live recording."""
+    return _env_seconds("LIVE_MAX_CAPTURE_SECONDS", 900, 120, 7200)
 
 
 def live_record_stall_seconds() -> int:

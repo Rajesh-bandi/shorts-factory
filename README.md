@@ -157,7 +157,8 @@ Open **Settings** in the app:
    builds open Google in your normal browser; the local backend receives the
    callback.
 3. **AI** — enter your hosted Omniroute server's Base URL (for example
-   `https://ai.example.com/v1`), API key and model. The app no longer bundles
+   `https://ai.example.com/v1`), API key and optional model (blank lets the
+   gateway use its default). The app no longer bundles
    Omniroute, so installers are smaller and start faster; the server can run on
    AWS EC2 and keep its provider state there. Any other OpenAI-compatible
    endpoint also works. Without it, the pipeline falls back to local heuristics.
@@ -178,9 +179,10 @@ retention/watch-time metrics.
 1. Read metadata and English captions without downloading video.
    For an active live stream, record it locally first. Live links always use
    chat spikes: watch chat for the first surge (`LIVE_CHAT_SCAN_SECONDS`),
-   record `LIVE_SPIKE_PAD_SECONDS` before and after each surge, and stop at the
-   `LIVE_MAX_CAPTURE_SECONDS` cap. No chat or no spike fails the job with a
-   clear error.
+   record `LIVE_SPIKE_PAD_SECONDS` after each surge (live cannot be rewound),
+   stop once the requested number of clips has its post-roll, and never exceed
+   `LIVE_MAX_CAPTURE_SECONDS`. No chat or no spike fails the job with a clear
+   error.
 2. AI selects moments from the timed transcript. Long videos are map-reduced in
    overlapping windows so the end of a two-hour video is not dropped. Without
    AI, a transcript hook heuristic is used.
@@ -224,8 +226,8 @@ the local server to a public network.
 | `JOB_SOURCE_RETENTION_DAYS` | Reserved source-cleanup setting; not enforced yet (0 = keep) |
 | `DEFAULT_JOB_SECONDS` | Fallback ETA before enough job history exists |
 | `LIVE_CHAT_SCAN_SECONDS` | Watch chat for the first spike (default 300, 30–1800) |
-| `LIVE_SPIKE_PAD_SECONDS` | Record before/after each spike (default 300, 30–900) |
-| `LIVE_MAX_CAPTURE_SECONDS` | Hard cap per live capture (default 1800, 120–7200) |
+| `LIVE_SPIKE_PAD_SECONDS` | Record after each spike; live has no rewind (default 60, 30–900) |
+| `LIVE_MAX_CAPTURE_SECONDS` | Hard safety cap per live capture (default 900, 120–7200) |
 | `LIVE_RECORD_STALL_SECONDS` | Fail when ffmpeg writes no data (default 120, 60–600) |
 
 ## Optional multi-user server
