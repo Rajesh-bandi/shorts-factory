@@ -1,5 +1,7 @@
 # Production AWS stack: docker compose -f docker-compose.aws.yml up -d --build
-# Requires the EBS volume mounted at /mnt/shorts. See deploy/AWS.md.
+# All persistent data lives under /opt/shorts on the root EBS volume.
+# Docker and every service use restart: unless-stopped, so a stop/start of the
+# EC2 instance brings the whole stack back automatically. See deploy/AWS.md.
 services:
   db:
     image: postgres:16-alpine
@@ -9,7 +11,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-shorts}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
     volumes:
-      - /mnt/shorts/db:/var/lib/postgresql/data
+      - /opt/shorts/db:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
@@ -33,7 +35,7 @@ services:
       FORWARDED_ALLOW_IPS: "*"
       HF_HOME: /data/.cache
     volumes:
-      - /mnt/shorts/data:/data
+      - /opt/shorts/data:/data
     depends_on:
       db:
         condition: service_healthy
@@ -58,8 +60,25 @@ services:
       - "443:443"
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - /mnt/shorts/caddy/data:/data
-      - /mnt/shorts/caddy/config:/config
+      - /opt/shorts/caddy/data:/data
+      - /opt/shorts/caddy/config:/config
     depends_on:
       - frontend
     logging: *small-logs
+
+  # Private AI gateway. Bound to host loopback only; reach the dashboard from
+  # your PC with: ssh -L 20128:127.0.0.1:20128 ubuntu@<elastic-ip>
+  omniroute:
+    image: diegosouzapw/omniroute:latest
+    restart: unless-stopped
+    stop_grace_period: 40s
+    environment:
+      OMNIROUTE_MEMORY_MB: "4096"
+    ports:
+      - "127.0.0.1:20128:20128"
+    volumes:
+      - omniroute_data:/app/data
+    logging: *small-logs
+
+volumes:
+  omniroute_data:

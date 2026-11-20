@@ -22,30 +22,32 @@ Internet (HTTPS 443)
    frontend nginx  (static ES modules, /api and /media proxy)
         |
    backend FastAPI  (auth, jobs, live chat, ffmpeg, yt-dlp, Whisper)
-        |
-   Postgres 16 container
-        |
-   EBS gp3 volume mounted at /mnt/shorts
-     /mnt/shorts/data   -> /data (media, transcripts, uploads)
-     /mnt/shorts/db     -> Postgres data
-     /mnt/shorts/caddy  -> certificates
+        |                              |
+   Postgres 16                 OmniRoute (127.0.0.1:20128)
+        |                              |
+   EBS gp3 root volume at /opt/shorts
+     /opt/shorts/data      -> /data (media, transcripts, uploads)
+     /opt/shorts/db        -> Postgres data
+     /opt/shorts/caddy     -> certificates
+     omniroute_data        -> OmniRoute providers and keys
 ```
 
 All four users share the instance. The app already scopes jobs, settings,
 media, and OAuth credentials by `user_id`; `MAX_USERS=4` plus the invite code
 is the access boundary. Each user can connect their own YouTube OAuth client.
 
-Recommended size: **`t3.small` (2 vCPU, 2 GB)**. Four users share one
-serialized analysis queue, so this is the smallest instance that runs
-Postgres, the backend, Caddy/nginx and one ffmpeg render without constant
-swapping. New-account free-plan credits usually cover several months of this
-size; a legacy 12-month free-tier account can use `t3.micro` (1 GB) with the
-swap and concurrency settings in section 12, at the cost of slower renders.
+Recommended size: **`m7i.xlarge` (4 vCPU, 16 GB)**. The account has an 8 vCPU
+On-Demand quota, so `m7i.2xlarge` (8 vCPU, 32 GB) is the largest single
+instance without a quota increase, but it spends the free-plan credits twice
+as fast. `m7i.xlarge` runs Postgres, the backend, Caddy/nginx, OmniRoute and
+one or two ffmpeg renders comfortably.
 
-Rough cost: `t3.small` + 30 GB gp3 root + 50 GB gp3 data + Elastic IP is
-usually about **$20–28/month** depending on region. Enable T3 unlimited CPU
-credits so a render is not throttled after its burst balance runs out; normal
-four-user usage stays within a few cents of credit overage.
+Rough cost: **$0.2016/hour** while running in `us-east-1`, plus about
+$8/month for a 100 GB gp3 root volume and $3.60/month for the public IPv4.
+Running 12 hours a day is roughly **$75–85/month**. The account currently has
+about **$119.67** in free-plan credits, so watch the remaining balance in the
+Billing console. Resize to `m7i.2xlarge` later if renders need more
+parallelism; the quota already allows it.
 
 ---
 
@@ -54,24 +56,28 @@ four-user usage stays within a few cents of credit overage.
 Recommended baseline:
 
 - AMI: Ubuntu 24.04 LTS (x86_64)
-- Type: `t3.small` (2 vCPU, 2 GB), T3 unlimited CPU credits
-- Strict legacy free-tier fallback: `t3.micro` (1 GB), but add the 2 GB swap
-  file and use `WORKER_CONCURRENCY=1` (section 12)
-- Storage: 30 GB gp3 root + separate 50 GB gp3 data volume. Expand the data
-  volume when media grows; 50 GB holds roughly 25–40 live recordings.
-- Elastic IP: allocate and associate it
+- Type: `m7i.xlarge` (4 vCPU, 16 GB)
+- Storage: **100 GB gp3 root volume**. Everything, including Postgres,
+  media and OmniRoute, lives on this one volume. Set
+  `DeleteOnTermination=false` so terminating the instance does not destroy
+  the data.
+- Elastic IP: allocate and associate it, so the address survives every
+  stop/start.
 - Security group:
   - 22/tcp from your admin IP only (or use SSM Session Manager and no SSH)
   - 80/tcp and 443/tcp from `0.0.0.0/0` for Caddy/Let's Encrypt
-  - no 5432, no 8000, no 8080
+  - no 5432, no 8000, no 8080, no 20128
 
 For a stricter "no public origin" setup, see section 11.
 
-DNS: create an `A` record `shorts.example.com -> Elastic IP` before starting
-Caddy, so the first certificate request succeeds.
+DNS: point a hostname at the Elastic IP before starting Caddy. If you do not
+have a domain yet, `shorts.<elastic-ip>.sslip.io` resolves to the IP and
+Let's Encrypt will issue a certificate for it. Move to a real domain later by
+changing `APP_DOMAIN`, `APP_BASE_URL` and `OAUTH_REDIRECT_URI`, then
+restarting Caddy.
 
-Add a 2 GB swap file. This is mandatory on `t3.micro`, and a useful cushion
-on `t3.small` during a 1080p render or a Whisper fallback:
+Add a 2 GB swap file as a cushion during a 1080p render or a Whisper
+fallback:
 
 ```bash
 sudo fallocate -l 2G /swapfile
@@ -85,22 +91,18 @@ sudo sysctl vm.swappiness=10
 
 ---
 
-## 3. Mount the data volume
+## 3. Prepare data directories
 
-If the data volume is a separate EBS device (for example `/dev/nvme1n1`):
+All persistent state is on the 100 GB root volume, so a stop/start needs no
+mount ordering:
 
 ```bash
-lsblk
-sudo mkfs -t xfs /dev/nvme1n1
-sudo mkdir -p /mnt/shorts
-echo "UUID=$(sudo blkid -s UUID -o value /dev/nvme1n1) /mnt/shorts xfs defaults,nofail 0 2" \
-  | sudo tee -a /etc/fstab
-sudo mount -a
-sudo mkdir -p /mnt/shorts/data /mnt/shorts/db /mnt/shorts/caddy/data /mnt/shorts/caddy/config
+sudo mkdir -p /opt/shorts/data /opt/shorts/db /opt/shorts/backups \
+  /opt/shorts/caddy/data /opt/shorts/caddy/config
 ```
 
-Use the root volume for `/mnt/shorts` only if you deliberately want a single
-volume. A separate volume makes snapshots and resizing cleaner.
+Take EBS snapshots of the root volume before upgrades. The instance can be
+terminated and relaunched from the snapshot if needed.
 
 ---
 
@@ -156,7 +158,7 @@ POSTGRES_PASSWORD=<strong-random-password>
 DATABASE_URL=postgresql+psycopg://shorts:<same-password>@db:5432/shorts
 
 DATA_DIR=/data
-WORKER_CONCURRENCY=1
+WORKER_CONCURRENCY=2
 MEDIA_RETENTION_DAYS=14
 JOB_SOURCE_RETENTION_DAYS=7
 ```
@@ -175,10 +177,10 @@ Notes:
 
 ## 6. Production compose file
 
-The repo ships `docker-compose.aws.yml` (shown below). It puts Postgres, media,
-and Caddy state on the EBS mount and stops publishing the raw frontend port.
-Use it explicitly so the generic `docker-compose.yml` stays usable for local
-Docker tests.
+The repo ships `docker-compose.aws.yml` (shown below). It puts Postgres,
+media, Caddy state and OmniRoute on the root volume and stops publishing the
+raw frontend port. Use it explicitly so the generic `docker-compose.yml` stays
+usable for local Docker tests.
 
 ```yaml
 services:
@@ -190,7 +192,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-shorts}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
     volumes:
-      - /mnt/shorts/db:/var/lib/postgresql/data
+      - /opt/shorts/db:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
@@ -214,7 +216,7 @@ services:
       FORWARDED_ALLOW_IPS: "*"
       HF_HOME: /data/.cache
     volumes:
-      - /mnt/shorts/data:/data
+      - /opt/shorts/data:/data
     depends_on:
       db:
         condition: service_healthy
@@ -239,15 +241,31 @@ services:
       - "443:443"
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - /mnt/shorts/caddy/data:/data
-      - /mnt/shorts/caddy/config:/config
+      - /opt/shorts/caddy/data:/data
+      - /opt/shorts/caddy/config:/config
     depends_on:
       - frontend
     logging: *small-logs
+
+  omniroute:
+    image: diegosouzapw/omniroute:latest
+    restart: unless-stopped
+    stop_grace_period: 40s
+    environment:
+      OMNIROUTE_MEMORY_MB: "4096"
+    ports:
+      - "127.0.0.1:20128:20128"
+    volumes:
+      - omniroute_data:/app/data
+    logging: *small-logs
+
+volumes:
+  omniroute_data:
 ```
 
-`HF_HOME=/data/.cache` keeps the Whisper model on the EBS volume instead of
-re-downloading it into a fresh container after every rebuild.
+`HF_HOME=/data/.cache` keeps the Whisper model on the root volume instead of
+re-downloading it into a fresh container after every rebuild. OmniRoute is
+published only on host loopback; section 9 shows the SSH tunnel.
 
 ---
 
@@ -263,7 +281,9 @@ The repo ships `deploy/Caddyfile`:
 ```
 
 Caddy obtains and renews the certificate automatically. The nginx container
-continues to proxy `/api/` and `/media/` to the backend.
+continues to proxy `/api/` and `/media/` to the backend. OmniRoute is not
+published through Caddy; it stays on host loopback and is reached through an
+SSH tunnel.
 
 ---
 
@@ -298,7 +318,31 @@ cd ~/yt-short-maker
 docker compose -f docker-compose.aws.yml up -d --build
 docker compose -f docker-compose.aws.yml ps
 curl -fsS https://shorts.example.com/healthz
+docker compose -f docker-compose.aws.yml logs --tail=30 omniroute
 ```
+
+Open the OmniRoute dashboard from your PC through an SSH tunnel:
+
+```bash
+ssh -L 20128:127.0.0.1:20128 ubuntu@shorts.example.com
+# keep that session open, then browse http://localhost:20128
+```
+
+Add your providers in that dashboard. Use `http://omniroute:20128/v1` as the
+base URL when configuring the Shorts app's AI settings, and create an
+OmniRoute API key there for the app.
+
+Enable Docker at boot and confirm the whole stack returns after a stop/start:
+
+```bash
+sudo systemctl enable docker
+sudo systemctl enable --now docker
+```
+
+Every service uses `restart: unless-stopped`, so an EC2 stop/start brings
+Postgres, the backend, Caddy and OmniRoute back automatically. Test it once:
+stop the instance from the AWS console, start it again, wait a minute, then
+`curl -fsS https://shorts.example.com/healthz`.
 
 Create the owner **before sharing the URL**, so no scanner can claim the
 first account:
@@ -327,7 +371,7 @@ group to your IP, register the owner in the browser immediately, then open
 the UI, or add an off-peak cleanup cron on the host:
 
 ```cron
-15 4 * * * find /mnt/shorts/data/media -type f -mtime +21 -delete
+15 4 * * * find /opt/shorts/data/media -type f -mtime +21 -delete
 ```
 
 This leaves database rows in place; the UI already tolerates missing preview
@@ -335,12 +379,13 @@ files. Do not run it while a long live capture is active.
 
 ### Backups
 
-- Enable EBS Data Lifecycle Manager: daily snapshot of the data volume,
-  retain 7–14 days. This captures Postgres, media, and Caddy state together.
+- Enable EBS Data Lifecycle Manager: daily snapshot of the root volume,
+  retain 7–14 days. This captures Postgres, media, Caddy and OmniRoute state
+  together.
 - Optional logical dump:
   ```bash
   docker compose -f docker-compose.aws.yml exec -T db pg_dump -U shorts shorts \
-    | gzip > /mnt/shorts/backups/shorts-$(date +%F).sql.gz
+    | gzip > /opt/shorts/backups/shorts-$(date +%F).sql.gz
   ```
 - Test a restore once. A snapshot you have never restored is not a backup.
 
@@ -383,24 +428,27 @@ recommended unless all four have static addresses.
 
 - One backend container, one uvicorn process. The durable worker is
   in-process; do not scale backend replicas or uvicorn workers.
-- Set `WORKER_CONCURRENCY=1` in `.env` on `t3.small` and `t3.micro`. More
-  workers only contend for the same two vCPUs and 2 GB of RAM. Use `2` only
-  if you deliberately resize to 8 GB.
-- Analysis is serialized by an in-process lock, so extra workers do not make
-  transcript analysis parallel. A single worker keeps memory predictable.
+- Set `WORKER_CONCURRENCY=2` in `.env` on `m7i.xlarge`. Analysis is still
+  serialized by an in-process lock, but the second worker can run a manual cut
+  or render while one analysis (including a live capture) holds the lock.
 - A live job can hold the analysis lock for up to 30 minutes (5 min scan plus
   the capture cap). Other analysis jobs wait; manual cuts and renders are
   small enough to queue behind them.
-- Whisper only runs when English captions are unavailable. On CPU, the
-  `small` model is slow and memory-hungry. Set the per-user Whisper model to
-  `base` for the 2 GB instance.
+- Whisper only runs when English captions are unavailable. On CPU, `small`
+  is slower but usable on four vCPU. Use `base` if fallback speed matters.
 - Keep `MAX_USERS=4`; do not expose a registration page without the invite
   code.
-- 50 GB gp3 is enough for normal use with cleanup; monitor it and expand the
-  volume if live clipping is heavy (a 30-minute 1080p recording can be
-  1–2 GB). Retention env vars are not enforced, so delete old jobs in the UI.
-- On `t3.micro`, expect slower 1080p renders and keep an eye on swap with
-  `free -h`. If the kernel OOM-kills ffmpeg, resize to `t3.small`.
+- The 100 GB root volume is enough for normal use with cleanup; monitor it
+  and expand it online if live clipping is heavy (a 30-minute 1080p recording
+  can be 1–2 GB). Retention env vars are not enforced, so delete old jobs in
+  the UI.
+- OmniRoute is capped at 4 GB (`OMNIROUTE_MEMORY_MB=4096`), which is ample
+  for one or two light chat clients. Raise it only if you use long coding
+  agent sessions.
+- Stopping the instance at night is safe. Postgres, media, Caddy certificates
+  and OmniRoute state are all on the root volume; jobs that were running are
+  requeued on the next boot. Always stop from the AWS console, not with
+  `shutdown -h now`, so the EBS volume is detached cleanly.
 
 ---
 
@@ -409,14 +457,17 @@ recommended unless all four have static addresses.
 ```bash
 cd ~/yt-short-maker
 git pull
+docker compose -f docker-compose.aws.yml pull omniroute
 docker compose -f docker-compose.aws.yml up -d --build
 docker compose -f docker-compose.aws.yml ps
+docker compose -f docker-compose.aws.yml logs --tail=20 omniroute
 curl -fsS https://shorts.example.com/healthz
 ```
 
 Bump the `?v=` query strings in `frontend/index.html` when JS/CSS changes,
 and keep the nginx no-cache rule for `.js`/`.mjs`. In-flight jobs are requeued
-on restart.
+on restart. OmniRoute uses the mutable `latest` tag; `pull` before an update
+and check the dashboard version after it restarts.
 
 Take an EBS snapshot before a schema-changing update. The app uses
 `create_all`, not migrations.
@@ -444,10 +495,9 @@ Take an EBS snapshot before a schema-changing update. The app uses
    request; otherwise Caddy retries with backoff.
 8. **No GPU on this box.** Rendering uses libx264; CPU transcodes are the
    main cost. Keep one or two workers, not more.
-9. **Live ffmpeg can stall silently.** I observed a real live job whose chat
-   capture kept working while `jobNN_live.part.mp4` stayed at 0 bytes for
-   ~10 minutes; a fresh ffmpeg with the same resolved URLs wrote 5 MB in 12
-   seconds. The recorder has no "no output growth" watchdog, so a stalled
-   ffmpeg can hold the global analysis lock until the 30-minute cap. If a
-   live job shows no video bytes, cancel and retry it. Adding a watchdog is a
-   sensible follow-up before inviting heavy live users.
+9. **Live ffmpeg can stall silently.** A real live job once left
+   `jobNN_live.part.mp4` at zero bytes while chat capture continued. The
+   recorder now aborts when ffmpeg writes nothing for
+   `LIVE_RECORD_STALL_SECONDS` (default 120) and fails the job with a clear
+   error instead of holding the analysis lock for 30 minutes. Raise the value
+   only if your streams routinely need longer reconnects.
