@@ -139,6 +139,8 @@ enough. The file must contain `LOGIN_INFO` and a first-party session cookie
      /ST 09:00
    ```
    This only works while the SSH security group allows your current home IP.
+   If SSH times out, run `scripts/allow-ssh-ip.ps1` first: the ISP changed your
+   public IP and the app is unaffected, but port 22 is closed to the new one.
 
 **Manual refresh:**
 
@@ -700,8 +702,8 @@ backend and OmniRoute share the compose network.
   `bandirajesh209@gmail.com`; confirm the subscription from the first AWS
   Budget email, or alerts will not arrive.
 - SSH is allowed only from your current home IP (`<your-ip>/32`). If the home
-  IP changes, update inbound port 22 on `sg-024b4c65f2d9a0f5d`; 80/443 stay
-  open.
+  IP changes, run `scripts/allow-ssh-ip.ps1`; 80/443 stay open either way.
+  The app itself keeps working when SSH is blocked.
 - Refresh YouTube cookies with `scripts/refresh-youtube-cookies.ps1` when the
   Settings -> System health item turns red or downloads start failing. The file
   is mode `600`; no restart is needed.
