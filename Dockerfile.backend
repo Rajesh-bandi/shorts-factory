@@ -7,8 +7,17 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     SERVE_FRONTEND=false
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg ca-certificates curl \
+    && apt-get install -y --no-install-recommends ffmpeg ca-certificates curl unzip \
     && rm -rf /var/lib/apt/lists/*
+
+# yt-dlp needs a JavaScript runtime to solve YouTube's signature/n challenges.
+# Deno is the recommended EJS runtime; it is detected automatically in PATH.
+RUN curl -fsSL https://github.com/denoland/deno/releases/latest/download/deno-x86_64-unknown-linux-gnu.zip \
+      -o /tmp/deno.zip \
+    && unzip -q /tmp/deno.zip -d /usr/local/bin \
+    && chmod 755 /usr/local/bin/deno \
+    && rm /tmp/deno.zip \
+    && deno --version
 
 WORKDIR /app
 COPY requirements.docker.txt .

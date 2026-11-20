@@ -126,7 +126,11 @@ bot"**. Install the app first, reproduce the error once, then:
    ```
 3. The backend reads `/secrets/youtube-cookies.txt` automatically (compose
    mounts `/opt/shorts/secrets` read-only at `/secrets`). No restart is needed;
-   each new yt-dlp call picks up the file.
+   each new yt-dlp call copies it to a writable temp file and picks up changes.
+   The backend image also ships Deno and `yt-dlp-ejs`, which yt-dlp needs to
+   solve YouTube's signature/n challenges. If logs show **"Signature solving
+   failed"** or **"No video formats found"**, rebuild the backend image so
+   those components are present.
 4. If YouTube still blocks the IP, set `YTDLP_PROXY` in `.env` to a
    residential HTTP/SOCKS proxy and restart the backend:
    ```bash
@@ -521,9 +525,10 @@ Take an EBS snapshot before a schema-changing update. The app uses
 1. **YouTube blocks EC2 datacenter IPs** with "Sign in to confirm you're not
    a bot" (confirmed on this instance). Mount a signed-in `cookies.txt` at
    `/opt/shorts/secrets/youtube-cookies.txt`; the downloader, live recorder,
-   chat grabber and caption lookup all pass it to yt-dlp. If cookies are not
-   enough, set `YTDLP_PROXY` to a residential proxy. Cookies expire: refresh
-   them when downloads start failing again.
+   chat grabber and caption lookup all pass it to yt-dlp. The backend image
+   includes Deno + `yt-dlp-ejs` for the signature/n challenge solver. If
+   cookies are not enough, set `YTDLP_PROXY` to a residential proxy. Cookies
+   expire: refresh them when downloads start failing again.
 2. **First account is uninvited** by design. Bootstrap the owner from the
    CLI before exposing the host (section 9).
 3. **Google OAuth in Testing mode** expires refresh tokens after 7 days.

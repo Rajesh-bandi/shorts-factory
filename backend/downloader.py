@@ -10,6 +10,7 @@ import signal
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from urllib.parse import urlparse
 
@@ -52,6 +53,33 @@ def ytdlp_command():
     return [sys.executable, "-m", "yt_dlp"]
 
 
+def _writable_cookies():
+    """Return a writable copy of YTDLP_COOKIES_FILE, or "".
+
+    yt-dlp saves its cookie jar when it closes, so pointing it at a read-only
+    secrets mount fails *after* a successful extraction. Keep a refreshed copy
+    in the container's temp dir; the source is only re-read when it changes.
+    """
+    source = os.getenv("YTDLP_COOKIES_FILE", "").strip()
+    if not source or not os.path.isfile(source):
+        return ""
+    target = os.path.join(tempfile.gettempdir(), "shorts-youtube-cookies.txt")
+    try:
+        if (not os.path.exists(target)
+                or os.path.getmtime(target) < os.path.getmtime(source)):
+            fd, temp_path = tempfile.mkstemp(
+                prefix="shorts-cookies-", suffix=".txt",
+                dir=tempfile.gettempdir(),
+            )
+            os.close(fd)
+            shutil.copyfile(source, temp_path)
+            os.chmod(temp_path, 0o600)
+            os.replace(temp_path, target)
+    except OSError:
+        return source
+    return target
+
+
 def ytdlp_common_args():
     """Shared auth and networking flags for every yt-dlp subprocess.
 
@@ -61,8 +89,8 @@ def ytdlp_common_args():
     yt-dlp through an HTTP/SOCKS proxy.
     """
     args = []
-    cookies = os.getenv("YTDLP_COOKIES_FILE", "").strip()
-    if cookies and os.path.isfile(cookies):
+    cookies = _writable_cookies()
+    if cookies:
         args += ["--cookies", cookies]
     proxy = os.getenv("YTDLP_PROXY", "").strip()
     if proxy:
@@ -73,8 +101,8 @@ def ytdlp_common_args():
 def ytdlp_common_opts(opts=None):
     """Apply cookies/proxy to a yt-dlp Python API options dict."""
     opts = dict(opts or {})
-    cookies = os.getenv("YTDLP_COOKIES_FILE", "").strip()
-    if cookies and os.path.isfile(cookies):
+    cookies = _writable_cookies()
+    if cookies:
         opts["cookiefile"] = cookies
     proxy = os.getenv("YTDLP_PROXY", "").strip()
     if proxy:
