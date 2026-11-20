@@ -243,6 +243,12 @@ For a private AWS deployment, use `docker-compose.aws.yml`, `deploy/Caddyfile`
 and the step-by-step runbook in `deploy/AWS.md`. It covers Caddy TLS, Postgres,
 EBS media storage, backups, and the four-user invite setup.
 
+EC2's IP is blocked by YouTube for live streams unless yt-dlp carries a
+signed-in session. Use a **complete** `cookies.txt` (it must include
+`LOGIN_INFO` and `SID`/`__Secure-1PSID`) and refresh it with
+`scripts/refresh-youtube-cookies.ps1`. Settings -> System shows whether the
+active file is complete. See the YouTube cookies section in `deploy/AWS.md`.
+
 For a generic Docker host:
 
 ```bash

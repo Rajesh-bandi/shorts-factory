@@ -53,23 +53,78 @@ def ytdlp_command():
     return [sys.executable, "-m", "yt_dlp"]
 
 
+def cookie_source():
+    """Return the cookies file to use, preferring a file under DATA_DIR.
+
+    The EC2 secrets mount is read-only. A file at
+    ``$DATA_DIR/secrets/youtube-cookies.txt`` can be replaced without touching
+    the mount, so it wins when present.
+    """
+    uploaded = config.DATA_DIR / "secrets" / "youtube-cookies.txt"
+    if uploaded.is_file():
+        return str(uploaded)
+    return os.getenv("YTDLP_COOKIES_FILE", "").strip()
+
+
+def _cookie_names(path):
+    """Read cookie names from a Netscape file without exposing their values."""
+    names = set()
+    try:
+        with open(path, encoding="utf-8", errors="replace") as handle:
+            for raw in handle:
+                line = raw.rstrip("\r\n")
+                if line.startswith("#HttpOnly_"):
+                    line = line[len("#HttpOnly_"):]
+                elif not line or line.startswith("#"):
+                    continue
+                parts = line.split("\t")
+                if len(parts) == 7:
+                    names.add(parts[5])
+    except OSError:
+        return names
+    return names
+
+
+def cookie_status():
+    """Return (ok, detail) for the active YouTube cookies file."""
+    source = cookie_source()
+    if not source or not os.path.isfile(source):
+        return False, "No cookies file - live streams may be blocked"
+    names = _cookie_names(source)
+    if not names:
+        return False, "Unreadable cookies file"
+    has_login = "LOGIN_INFO" in names
+    has_sid = any(name in names for name in ("SID", "__Secure-1PSID", "__Secure-3PSID"))
+    if has_login and has_sid:
+        return True, f"Complete ({len(names)} cookies)"
+    missing = []
+    if not has_login:
+        missing.append("LOGIN_INFO")
+    if not has_sid:
+        missing.append("SID")
+    return False, "Incomplete export - missing " + ", ".join(missing)
+
+
 def _writable_cookies():
-    """Return a writable copy of YTDLP_COOKIES_FILE, or "".
+    """Return a writable copy of the cookie jar, or "".
 
     yt-dlp saves its cookie jar when it closes, so pointing it at a read-only
-    secrets mount fails *after* a successful extraction. Keep a refreshed copy
-    in the container's temp dir; the source is only re-read when it changes.
+    secrets mount fails *after* a successful extraction. Keep the refreshed jar
+    in DATA_DIR so rotated cookies survive container restarts; the source is
+    only re-read when it changes.
     """
-    source = os.getenv("YTDLP_COOKIES_FILE", "").strip()
+    source = cookie_source()
     if not source or not os.path.isfile(source):
         return ""
-    target = os.path.join(tempfile.gettempdir(), "shorts-youtube-cookies.txt")
+    cache_dir = config.DATA_DIR / ".cache"
+    target = str(cache_dir / "youtube-cookies.txt")
     try:
+        cache_dir.mkdir(parents=True, exist_ok=True)
         if (not os.path.exists(target)
                 or os.path.getmtime(target) < os.path.getmtime(source)):
             fd, temp_path = tempfile.mkstemp(
                 prefix="shorts-cookies-", suffix=".txt",
-                dir=tempfile.gettempdir(),
+                dir=str(cache_dir),
             )
             os.close(fd)
             shutil.copyfile(source, temp_path)

@@ -114,34 +114,67 @@ sudo chmod 700 /opt/shorts/secrets
 ### YouTube cookies (required on EC2)
 
 YouTube answers most cloud IPs with **"Sign in to confirm you're not a
-bot"**. Install the app first, reproduce the error once, then:
+bot"**. A signed-in cookie file fixes normal videos and live streams, but it
+must be a **complete** export. The common browser-extension export that only
+contains `PREF`, `VISITOR_INFO1_LIVE` and the `__Secure-3P*` cookies is not
+enough. The file must contain `LOGIN_INFO` and a first-party session cookie
+(`SID` or `__Secure-1PSID`), plus `HSID`/`SSID`.
 
-1. In a browser signed in to YouTube (use a throwaway Google account, not your
-   main one), install a "Get cookies.txt LOCALLY" extension and export
-   `youtube.com` cookies in Netscape format as `cookies.txt`.
-2. Upload the file:
-   ```bash
-   scp -i ~/.ssh/shorts-deploy.pem cookies.txt \
-     ubuntu@shorts.example.com:/opt/shorts/secrets/youtube-cookies.txt
-   ssh ubuntu@shorts.example.com \
-     'chmod 600 /opt/shorts/secrets/youtube-cookies.txt'
+**Recommended refresh (Windows):**
+
+1. Sign in to YouTube in Firefox. Use a throwaway Google account, not your main
+   one: automated downloads can get an account limited.
+2. Run:
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File scripts/refresh-youtube-cookies.ps1
    ```
-3. The backend reads `/secrets/youtube-cookies.txt` automatically (compose
-   mounts `/opt/shorts/secrets` read-only at `/secrets`). No restart is needed;
-   each new yt-dlp call copies it to a writable temp file and picks up changes.
-   The backend image also ships Deno and `yt-dlp-ejs`, which yt-dlp needs to
-   solve YouTube's signature/n challenges. If logs show **"Signature solving
-   failed"** or **"No video formats found"**, rebuild the backend image so
-   those components are present.
-4. If YouTube still blocks the IP, set `YTDLP_PROXY` in `.env` to a
-   residential HTTP/SOCKS proxy and restart the backend:
-   ```bash
-   docker compose -f docker-compose.aws.yml up -d backend
+   The script exports the cookies with `yt-dlp --cookies-from-browser`, checks
+   for `LOGIN_INFO` + `SID`, tests the file from EC2, installs it at
+   `/opt/shorts/secrets/youtube-cookies.txt` with mode `600`, and clears the
+   cached jar so the next job uses the new file.
+3. Optional weekly refresh:
+   ```powershell
+   schtasks /Create /SC WEEKLY /TN "Shorts YouTube cookies" ^
+     /TR "powershell -ExecutionPolicy Bypass -File C:\Omarchy\projects\yt-short-maker\scripts\refresh-youtube-cookies.ps1" ^
+     /ST 09:00
    ```
+   This only works while the SSH security group allows your current home IP.
+
+**Manual refresh:**
+
+```bash
+scp -i ~/.ssh/shorts-deploy.pem cookies.txt \
+  ubuntu@shorts.example.com:/opt/shorts/data/secrets/youtube-cookies.txt
+ssh ubuntu@shorts.example.com \
+  'chmod 600 /opt/shorts/data/secrets/youtube-cookies.txt'
+```
+
+A file at `/opt/shorts/data/secrets/youtube-cookies.txt` takes precedence over
+the read-only `/opt/shorts/secrets/youtube-cookies.txt` mount. The backend
+copies the active file to `/data/.cache/youtube-cookies.txt`, so yt-dlp's
+rotated cookies survive container restarts. No restart is needed; the next
+yt-dlp call picks up a newer source file.
+
+Check **Settings -> System -> YouTube cookies**. It shows `Complete` only when
+`LOGIN_INFO` and `SID`/`__Secure-1PSID` are present; an incomplete export shows
+a warning there and live jobs will keep failing.
+
+Do **not** try to log the Google account in on EC2 as a workaround. yt-dlp's
+YouTube OAuth support no longer works (YouTube removed it), a headless login
+from a datacenter IP is challenged, and it puts the account at more risk than a
+cookie file. If even a complete cookie file is rejected, set `YTDLP_PROXY` in
+`.env` to a residential HTTP/SOCKS proxy and restart the backend:
+
+```bash
+docker compose -f docker-compose.aws.yml up -d backend
+```
 
 Cookies are credentials: keep the file at mode 600, never commit it, and
-refresh it when downloads start failing again. A dedicated account limits the
-blast radius if it is ever leaked.
+refresh it when the health item turns red or downloads start failing again. A
+dedicated account limits the blast radius if it is ever leaked. The backend
+image ships Deno and `yt-dlp-ejs` for YouTube's signature/n challenges; if logs
+show **"Signature solving failed"** or **"No video formats found"**, rebuild
+the backend image.
 
 Take EBS snapshots of the root volume before upgrades. The instance can be
 terminated and relaunched from the snapshot if needed.
@@ -558,12 +591,14 @@ Take an EBS snapshot before a schema-changing update. The app uses
 ## 14. Known risks / gotchas
 
 1. **YouTube blocks EC2 datacenter IPs** with "Sign in to confirm you're not
-   a bot" (confirmed on this instance). Mount a signed-in `cookies.txt` at
-   `/opt/shorts/secrets/youtube-cookies.txt`; the downloader, live recorder,
-   chat grabber and caption lookup all pass it to yt-dlp. The backend image
-   includes Deno + `yt-dlp-ejs` for the signature/n challenge solver. If
-   cookies are not enough, set `YTDLP_PROXY` to a residential proxy. Cookies
-   expire: refresh them when downloads start failing again.
+   a bot" (confirmed on this instance). Mount a **complete** signed-in
+   `cookies.txt` (it must include `LOGIN_INFO` and `SID`/`__Secure-1PSID`); the
+   downloader, live recorder, chat grabber and caption lookup all pass it to
+   yt-dlp. `scripts/refresh-youtube-cookies.ps1` exports, tests and installs a
+   fresh file. The backend image includes Deno + `yt-dlp-ejs` for the
+   signature/n challenge solver. If a complete cookie file is still rejected,
+   set `YTDLP_PROXY` to a residential proxy. Refresh when Settings -> System
+   shows "YouTube cookies" as incomplete.
 2. **First account is uninvited** by design. Bootstrap the owner from the
    CLI before exposing the host (section 9).
 3. **Google OAuth in Testing mode** expires refresh tokens after 7 days.
@@ -662,9 +697,10 @@ backend and OmniRoute share the compose network.
 - The AWS Budget `shorts-factory-monthly` emails alerts to
   `bandirajesh209@gmail.com`; confirm the subscription from the first AWS
   Budget email, or alerts will not arrive.
-- SSH is allowed only from `106.221.185.15/32`. If the home IP changes, update
-  inbound port 22 on `sg-024b4c65f2d9a0f5d`; 80/443 stay open.
-- Refresh `/opt/shorts/secrets/youtube-cookies.txt` (mode `600`) when YouTube
-  downloads start failing. Re-export it from a signed-in browser; no restart
-  is needed.
+- SSH is allowed only from your current home IP (`<your-ip>/32`). If the home
+  IP changes, update inbound port 22 on `sg-024b4c65f2d9a0f5d`; 80/443 stay
+  open.
+- Refresh YouTube cookies with `scripts/refresh-youtube-cookies.ps1` when the
+  Settings -> System health item turns red or downloads start failing. The file
+  is mode `600`; no restart is needed.
 - Take an EBS snapshot of the root volume before schema-changing updates.

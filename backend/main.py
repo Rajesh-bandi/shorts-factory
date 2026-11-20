@@ -1046,6 +1046,8 @@ def health(user: CurrentUser):
         {"name": "NVENC rendering", "ok": gpu.nvenc_available(),
          "detail": "h264_nvenc available" if gpu.nvenc_available() else "CPU x264 fallback"},
     ]
+    cookie_ok, cookie_detail = downloader.cookie_status()
+    items.append({"name": "YouTube cookies", "ok": cookie_ok, "detail": cookie_detail})
     directory = downloader.user_media_dir(user["id"])
     try:
         disk = shutil.disk_usage(directory)
