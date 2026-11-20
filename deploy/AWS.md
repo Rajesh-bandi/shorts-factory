@@ -15,23 +15,25 @@ Placeholders used below:
 ## 1. Architecture
 
 ```
-Internet (HTTPS 443)
-        |
-     Caddy  (TLS, automatic Let's Encrypt)
-        |
-   frontend nginx  (static ES modules, /api and /media proxy)
-        |
-   backend FastAPI  (auth, jobs, live chat, ffmpeg, yt-dlp, Whisper)
-        |                              |
-   Postgres 16                 OmniRoute (127.0.0.1:20128)
-        |                              |
-   EBS gp3 root volume at /opt/shorts
-     /opt/shorts/data      -> /data (media, transcripts, uploads)
-     /opt/shorts/db        -> Postgres data
-     /opt/shorts/caddy     -> certificates
-     /opt/shorts/secrets   -> YouTube cookies (read-only)
-     omniroute_data        -> OmniRoute providers and keys
+Browser
+   |-- https://app.<domain>  -> Vercel (static ES modules, no build)
+   |
+   '-- https://api.<domain>  -> Caddy (TLS, automatic Let's Encrypt)
+                                      |
+                               backend FastAPI  (auth, jobs, live chat, ffmpeg, yt-dlp, Whisper)
+                                      |                              |
+                                 Postgres 16                 OmniRoute (127.0.0.1:20128)
+                                      |                              |
+                               EBS gp3 root volume at /opt/shorts
+                                 /opt/shorts/data      -> /data (media, transcripts, uploads)
+                                 /opt/shorts/db        -> Postgres data
+                                 /opt/shorts/caddy     -> certificates
+                                 /opt/shorts/secrets   -> YouTube cookies (read-only)
+                                 omniroute_data        -> OmniRoute providers and keys
 ```
+
+The frontend is hosted on Vercel. EC2 keeps only the API, Postgres, media and
+OmniRoute. `frontend/config.js` points the browser at the API origin.
 
 All four users share the instance. The app already scopes jobs, settings,
 media, and OAuth credentials by `user_id`; `MAX_USERS=4` plus the invite code
@@ -41,7 +43,7 @@ Deployed size: **`m7i-flex.large` (2 vCPU, 8 GB)**. This FREE-plan account
 rejects every larger type with `InvalidParameterCombination: not eligible for
 Free Tier`; `m7i-flex.large` is the largest of the ten free-plan-eligible
 types. The 8 GB of RAM (four times `t3.small`) is the important part: Postgres,
-the backend, Caddy/nginx, OmniRoute and one ffmpeg render fit with headroom,
+the backend, Caddy, OmniRoute and one ffmpeg render fit with headroom,
 while analysis jobs stay serialized on two vCPUs.
 
 Rough cost: **$0.09576/hour** while running in `us-east-1`, plus about
@@ -223,9 +225,9 @@ Notes:
 ## 6. Production compose file
 
 The repo ships `docker-compose.aws.yml` (shown below). It puts Postgres,
-media, Caddy state and OmniRoute on the root volume and stops publishing the
-raw frontend port. Use it explicitly so the generic `docker-compose.yml` stays
-usable for local Docker tests.
+media, Caddy state and OmniRoute on the root volume. The frontend is on Vercel,
+so this stack has no nginx container. Use it explicitly so the generic
+`docker-compose.yml` stays usable for local Docker tests.
 
 ```yaml
 services:
@@ -270,15 +272,6 @@ services:
         condition: service_healthy
     logging: *small-logs
 
-  frontend:
-    build:
-      context: .
-      dockerfile: Dockerfile.frontend
-    restart: unless-stopped
-    depends_on:
-      - backend
-    logging: *small-logs
-
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
@@ -293,7 +286,7 @@ services:
       - /opt/shorts/caddy/data:/data
       - /opt/shorts/caddy/config:/config
     depends_on:
-      - frontend
+      - backend
     logging: *small-logs
 
   omniroute:
@@ -327,22 +320,34 @@ The repo ships `deploy/Caddyfile`:
 ```
 {$APP_DOMAIN} {
     encode zstd gzip
-    reverse_proxy frontend:80
+
+    handle /api/* {
+        reverse_proxy backend:8000
+    }
+    handle /media/* {
+        reverse_proxy backend:8000
+    }
+    handle /healthz {
+        reverse_proxy backend:8000
+    }
+    handle {
+        respond "Shorts Factory API" 200
+    }
 }
 ```
 
-Caddy obtains and renews the certificate automatically. The nginx container
-continues to proxy `/api/` and `/media/` to the backend. OmniRoute is not
-published through Caddy; it stays on host loopback and is reached through an
-SSH tunnel.
+Caddy obtains and renews the certificate automatically. It proxies only the
+API, media and health routes; the UI is served by Vercel. The `omniroute.$APP_DOMAIN`
+site is a second Caddy block in the same file.
 
 ---
 
 ## 8. Static asset cache rule
 
-`deploy/nginx.conf` serves `.js`/`.mjs` with `no-cache`. Keep this rule: the
-frontend split modules are imported without version query strings, so caching
-them for an hour can leave a browser running mixed old/new modules. The
+Vercel serves the frontend and revalidates its static files. `deploy/nginx.conf`
+is kept for a self-hosted fallback and serves `.js`/`.mjs` with `no-cache`;
+the frontend split modules are imported without version query strings, so
+caching them for an hour can leave a browser running mixed old/new modules. The
 relevant block is:
 
 ```nginx
@@ -469,15 +474,16 @@ but only four accounts can exist, registration needs the invite after the
 owner exists, and all media/API routes require a session. This is what the
 existing app is designed for.
 
-**B. Cloudflare Tunnel + Access (strict, no public origin).** Keep the app
+**B. Cloudflare Tunnel + Access (strict, no public origin).** Keep the API
 off the public internet:
 
-- Bind the frontend only to loopback: `127.0.0.1:8080:80` and drop Caddy.
-- Run `cloudflared` on the host with a tunnel to
-  `http://127.0.0.1:8080`.
+- Keep the frontend on Vercel.
+- Run `cloudflared` on the host with a tunnel to the backend on
+  `http://127.0.0.1:8000`.
 - Add a Cloudflare Access policy allowing only the four email addresses.
 - DNS and TLS live at Cloudflare; open no inbound 80/443 ports.
-- `APP_BASE_URL` and `OAUTH_REDIRECT_URI` still use the HTTPS hostname.
+- Set `frontend/config.js` `apiBase`, `APP_BASE_URL` and `OAUTH_REDIRECT_URI`
+  to the HTTPS API hostname.
 
 This adds a Cloudflare dependency but gives real "not public" semantics and
 email-OTP protection in front of the login page.
@@ -531,7 +537,7 @@ curl -fsS https://shorts.example.com/healthz
 ```
 
 Bump the `?v=` query strings in `frontend/index.html` when JS/CSS changes,
-and keep the nginx no-cache rule for `.js`/`.mjs`. In-flight jobs are requeued
+then redeploy `frontend/` to Vercel. In-flight jobs are requeued
 on restart. OmniRoute uses the mutable `latest` tag; `pull` before an update
 and check the dashboard version after it restarts.
 
@@ -556,7 +562,8 @@ Take an EBS snapshot before a schema-changing update. The app uses
    be exactly `https://shorts.example.com/api/auth/callback`. Publishing the
    OAuth consent screen avoids weekly reconnects.
 4. **Retention env vars are not implemented.** Use the cron or UI cleanup.
-5. **The frontend nginx cache** must not pin `.js` for an hour.
+5. **Vercel caches frontend assets.** Bump the `?v=` strings in
+   `frontend/index.html` when modules change, then redeploy.
 6. **Plain HTTP login will not work** with `COOKIE_SECURE=true`; finish TLS
    first.
 7. **Elastic IP + Caddy** need DNS to be live before the first certificate
@@ -612,8 +619,8 @@ ssh -i shorts-deploy.pem ubuntu@52.207.181.21 \
   'cd ~/yt-short-maker && docker compose -f docker-compose.aws.yml ps'
 ```
 
-What recovers automatically: Docker starts at boot, and all five containers
-(`db`, `backend`, `frontend`, `caddy`, `omniroute`) use
+What recovers automatically: Docker starts at boot, and all four containers
+(`db`, `backend`, `caddy`, `omniroute`) use
 `restart: unless-stopped`. Postgres data, media, certificates and OmniRoute
 state live on the root volume, and jobs interrupted by a stop are requeued on
 the next boot. The Elastic IP does not change.

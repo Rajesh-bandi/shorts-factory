@@ -1,6 +1,20 @@
+# API-only host. The frontend is served by Vercel; this origin keeps the API,
+# media files and health check on the EC2 instance.
 {$APP_DOMAIN} {
     encode zstd gzip
-    reverse_proxy frontend:80
+
+    handle /api/* {
+        reverse_proxy backend:8000
+    }
+    handle /media/* {
+        reverse_proxy backend:8000
+    }
+    handle /healthz {
+        reverse_proxy backend:8000
+    }
+    handle {
+        respond "Shorts Factory API" 200
+    }
 }
 
 # OmniRoute dashboard. Reachable without an SSH tunnel, but protected by HTTP

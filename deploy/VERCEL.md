@@ -1,7 +1,13 @@
 # Vercel frontend + EC2 API
 
-This is the target split. The EC2 host keeps the API, Postgres, media and
-OmniRoute; Vercel serves the static `frontend/` directory.
+This split is live. The EC2 host keeps the API, Postgres, media and OmniRoute;
+Vercel serves the static `frontend/` directory.
+
+Current URLs until the custom domain is connected:
+
+- Frontend: **https://shorts-factory-topaz.vercel.app**
+- API: **https://shorts.52.207.181.21.sslip.io**
+- OmniRoute: **https://omniroute.shorts.52.207.181.21.sslip.io**
 
 ```
 browser
@@ -55,9 +61,15 @@ window.SHORTS_CONFIG = Object.assign(
 );
 ```
 
-Keep `apiBase` empty for the current same-origin EC2 site. Set it to the API
-origin before deploying the Vercel build. API and media requests then include
-the session cookie.
+The current deployment sets `apiBase` to the EC2 API origin. API and media
+requests then include the session cookie. After the custom domain is live,
+change this value to `https://api.<domain>` and redeploy `frontend/`:
+
+```bash
+npx vercel deploy frontend --prod \
+  --project shorts-factory \
+  --scope rajesh-bandis-projects-9c708eb1
+```
 
 ## 3. DNS (Cloudflare)
 
@@ -107,7 +119,9 @@ The old `shorts.52.207.181.21.sslip.io` URI can stay during the transition.
 
 ## 6. Remove the EC2 frontend
 
-Do this only after the Vercel URL loads and login works.
+This is already done: `deploy/Caddyfile` is API-only and
+`docker-compose.aws.yml` no longer defines a `frontend` service. The steps below
+are the reproducible version.
 
 1. Change `deploy/Caddyfile` so the main API host proxies only backend routes:
 

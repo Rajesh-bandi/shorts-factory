@@ -47,15 +47,6 @@ services:
         condition: service_healthy
     logging: *small-logs
 
-  frontend:
-    build:
-      context: .
-      dockerfile: Dockerfile.frontend
-    restart: unless-stopped
-    depends_on:
-      - backend
-    logging: *small-logs
-
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
@@ -70,7 +61,7 @@ services:
       - /opt/shorts/caddy/data:/data
       - /opt/shorts/caddy/config:/config
     depends_on:
-      - frontend
+      - backend
     logging: *small-logs
 
   # Private AI gateway. Bound to host loopback only; reach the dashboard from
