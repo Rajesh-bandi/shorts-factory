@@ -34,8 +34,11 @@ services:
       SERVE_FRONTEND: "false"
       FORWARDED_ALLOW_IPS: "*"
       HF_HOME: /data/.cache
+      YTDLP_COOKIES_FILE: /secrets/youtube-cookies.txt
+      YTDLP_PROXY: ${YTDLP_PROXY:-}
     volumes:
       - /opt/shorts/data:/data
+      - /opt/shorts/secrets:/secrets:ro
     depends_on:
       db:
         condition: service_healthy

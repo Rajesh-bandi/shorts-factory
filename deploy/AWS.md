@@ -29,6 +29,7 @@ Internet (HTTPS 443)
      /opt/shorts/data      -> /data (media, transcripts, uploads)
      /opt/shorts/db        -> Postgres data
      /opt/shorts/caddy     -> certificates
+     /opt/shorts/secrets   -> YouTube cookies (read-only)
      omniroute_data        -> OmniRoute providers and keys
 ```
 
@@ -103,8 +104,38 @@ mount ordering:
 
 ```bash
 sudo mkdir -p /opt/shorts/data /opt/shorts/db /opt/shorts/backups \
-  /opt/shorts/caddy/data /opt/shorts/caddy/config
+  /opt/shorts/secrets /opt/shorts/caddy/data /opt/shorts/caddy/config
+sudo chown ubuntu:ubuntu /opt/shorts/secrets
+sudo chmod 700 /opt/shorts/secrets
 ```
+
+### YouTube cookies (required on EC2)
+
+YouTube answers most cloud IPs with **"Sign in to confirm you're not a
+bot"**. Install the app first, reproduce the error once, then:
+
+1. In a browser signed in to YouTube (use a throwaway Google account, not your
+   main one), install a "Get cookies.txt LOCALLY" extension and export
+   `youtube.com` cookies in Netscape format as `cookies.txt`.
+2. Upload the file:
+   ```bash
+   scp -i ~/.ssh/shorts-deploy.pem cookies.txt \
+     ubuntu@shorts.example.com:/opt/shorts/secrets/youtube-cookies.txt
+   ssh ubuntu@shorts.example.com \
+     'chmod 600 /opt/shorts/secrets/youtube-cookies.txt'
+   ```
+3. The backend reads `/secrets/youtube-cookies.txt` automatically (compose
+   mounts `/opt/shorts/secrets` read-only at `/secrets`). No restart is needed;
+   each new yt-dlp call picks up the file.
+4. If YouTube still blocks the IP, set `YTDLP_PROXY` in `.env` to a
+   residential HTTP/SOCKS proxy and restart the backend:
+   ```bash
+   docker compose -f docker-compose.aws.yml up -d backend
+   ```
+
+Cookies are credentials: keep the file at mode 600, never commit it, and
+refresh it when downloads start failing again. A dedicated account limits the
+blast radius if it is ever leaked.
 
 Take EBS snapshots of the root volume before upgrades. The instance can be
 terminated and relaunched from the snapshot if needed.
@@ -220,8 +251,11 @@ services:
       SERVE_FRONTEND: "false"
       FORWARDED_ALLOW_IPS: "*"
       HF_HOME: /data/.cache
+      YTDLP_COOKIES_FILE: /secrets/youtube-cookies.txt
+      YTDLP_PROXY: ${YTDLP_PROXY:-}
     volumes:
       - /opt/shorts/data:/data
+      - /opt/shorts/secrets:/secrets:ro
     depends_on:
       db:
         condition: service_healthy
@@ -482,11 +516,12 @@ Take an EBS snapshot before a schema-changing update. The app uses
 
 ## 14. Known risks / gotchas
 
-1. **YouTube may block EC2 datacenter IPs** with "Sign in to confirm you're
-   not a bot". The app currently has no cookie-file or proxy option. Smoke
-   test a real download before inviting friends. If it is blocked, either
-   add `YTDLP_PROXY` / `YTDLP_COOKIES` support to the downloader or host the
-   stack on a residential connection behind Cloudflare Tunnel.
+1. **YouTube blocks EC2 datacenter IPs** with "Sign in to confirm you're not
+   a bot" (confirmed on this instance). Mount a signed-in `cookies.txt` at
+   `/opt/shorts/secrets/youtube-cookies.txt`; the downloader, live recorder,
+   chat grabber and caption lookup all pass it to yt-dlp. If cookies are not
+   enough, set `YTDLP_PROXY` to a residential proxy. Cookies expire: refresh
+   them when downloads start failing again.
 2. **First account is uninvited** by design. Bootstrap the owner from the
    CLI before exposing the host (section 9).
 3. **Google OAuth in Testing mode** expires refresh tokens after 7 days.

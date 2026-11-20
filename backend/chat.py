@@ -81,6 +81,7 @@ def _cleanup_fragments(prefix):
 def _command(url, prefix):
     return [
         *downloader.ytdlp_command(),
+        *downloader.ytdlp_common_args(),
         "--skip-download",
         "--write-subs",
         "--sub-langs", "live_chat",

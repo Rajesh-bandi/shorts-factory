@@ -52,6 +52,36 @@ def ytdlp_command():
     return [sys.executable, "-m", "yt_dlp"]
 
 
+def ytdlp_common_args():
+    """Shared auth and networking flags for every yt-dlp subprocess.
+
+    YouTube blocks many datacenter IPs with "Sign in to confirm you're not a
+    bot". Point YTDLP_COOKIES_FILE at a Netscape-format cookies.txt exported
+    from a signed-in browser to authenticate. YTDLP_PROXY optionally routes
+    yt-dlp through an HTTP/SOCKS proxy.
+    """
+    args = []
+    cookies = os.getenv("YTDLP_COOKIES_FILE", "").strip()
+    if cookies and os.path.isfile(cookies):
+        args += ["--cookies", cookies]
+    proxy = os.getenv("YTDLP_PROXY", "").strip()
+    if proxy:
+        args += ["--proxy", proxy]
+    return args
+
+
+def ytdlp_common_opts(opts=None):
+    """Apply cookies/proxy to a yt-dlp Python API options dict."""
+    opts = dict(opts or {})
+    cookies = os.getenv("YTDLP_COOKIES_FILE", "").strip()
+    if cookies and os.path.isfile(cookies):
+        opts["cookiefile"] = cookies
+    proxy = os.getenv("YTDLP_PROXY", "").strip()
+    if proxy:
+        opts["proxy"] = proxy
+    return opts
+
+
 def user_media_dir(user_id):
     """Every account gets a private media directory."""
     path = os.path.join(MEDIA_DIR, str(int(user_id)))
@@ -125,13 +155,13 @@ def _clean_info(info):
 
 def probe(url: str, timeout: int = 45):
     """Fetch title/duration/caption tracks without downloading the video."""
-    opts = {
+    opts = ytdlp_common_opts({
         "skip_download": True,
         "quiet": True,
         "no_warnings": True,
         "noplaylist": True,
         "socket_timeout": timeout,
-    }
+    })
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=False)
     if not info:
@@ -208,7 +238,7 @@ def download(url: str, job_id: int, user_id: int, stage_cb, cancel_cb=None):
             return
         db.log(job_id, str(event))
 
-    opts = {
+    opts = ytdlp_common_opts({
         "outtmpl": os.path.join(directory, f"job{job_id}_source.%(ext)s"),
         "format": VIDEO_FORMAT,
         "merge_output_format": "mp4",
@@ -221,7 +251,7 @@ def download(url: str, job_id: int, user_id: int, stage_cb, cancel_cb=None):
         "fragment_retries": 5,
         "progress_hooks": [_progress_hook(job_id, stage_cb, cancel_cb)],
         "postprocessor_hooks": [_log],
-    }
+    })
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=True)
         path = ydl.prepare_filename(info)
@@ -301,6 +331,7 @@ def resolve_stream_urls(url):
     """Resolve the direct video/audio URLs for an active live stream."""
     cmd = [
         *ytdlp_command(),
+        *ytdlp_common_args(),
         "--no-playlist", "--no-warnings", "--get-url",
         "--format", VIDEO_FORMAT,
         url,
@@ -561,6 +592,7 @@ def download_section(url, job_id, start, end, user_id, tag="0", max_height=1080,
     )
     cmd = [
         *ytdlp_command(),
+        *ytdlp_common_args(),
         "--no-playlist", "--no-warnings", "--newline",
         "--format", video_format,
         "--merge-output-format", "mp4",
@@ -593,6 +625,7 @@ def download_audio(url, job_id, user_id, cancel_cb=None):
     db.log(job_id, "No English captions — downloading audio only for local analysis…")
     cmd = [
         *ytdlp_command(),
+        *ytdlp_common_args(),
         "--no-playlist", "--no-warnings", "--newline",
         "--format", AUDIO_FORMAT,
         "--retries", "3",

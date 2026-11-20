@@ -246,13 +246,13 @@ def _fetch_english_captions(url, info=None):
         except ImportError:
             return None, "yt-dlp is unavailable"
         try:
-            opts = {
+            opts = downloader.ytdlp_common_opts({
                 "skip_download": True,
                 "quiet": True,
                 "no_warnings": True,
                 "noplaylist": True,
                 "socket_timeout": 45,
-            }
+            })
             with yt_dlp.YoutubeDL(opts) as ydl:
                 info = ydl.extract_info(url, download=False)
         except Exception as e:
