@@ -2,3 +2,14 @@
     encode zstd gzip
     reverse_proxy frontend:80
 }
+
+# OmniRoute dashboard. Reachable without an SSH tunnel, but protected by HTTP
+# basic auth in addition to OmniRoute's own login. The hash lives in the
+# server's .env, never in this public repo.
+omniroute.{$APP_DOMAIN} {
+    encode zstd gzip
+    basic_auth {
+        rajesh {$OMNIROUTE_BASIC_AUTH_HASH}
+    }
+    reverse_proxy omniroute:20128
+}

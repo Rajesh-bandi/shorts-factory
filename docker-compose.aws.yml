@@ -58,6 +58,7 @@ services:
     restart: unless-stopped
     environment:
       APP_DOMAIN: ${APP_DOMAIN:?set APP_DOMAIN in .env}
+      OMNIROUTE_BASIC_AUTH_HASH: ${OMNIROUTE_BASIC_AUTH_HASH:?set OMNIROUTE_BASIC_AUTH_HASH in .env}
     ports:
       - "80:80"
       - "443:443"

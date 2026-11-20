@@ -201,6 +201,11 @@ DATA_DIR=/data
 WORKER_CONCURRENCY=2
 MEDIA_RETENTION_DAYS=14
 JOB_SOURCE_RETENTION_DAYS=7
+
+# bcrypt hash for the OmniRoute dashboard's HTTP basic auth (user: rajesh).
+# Generate with: docker compose -f docker-compose.aws.yml exec caddy \
+#   caddy hash-password --plaintext '<password>'
+OMNIROUTE_BASIC_AUTH_HASH='$2a$14$...'
 ```
 
 Notes:
@@ -279,6 +284,7 @@ services:
     restart: unless-stopped
     environment:
       APP_DOMAIN: ${APP_DOMAIN:?set APP_DOMAIN in .env}
+      OMNIROUTE_BASIC_AUTH_HASH: ${OMNIROUTE_BASIC_AUTH_HASH:?set OMNIROUTE_BASIC_AUTH_HASH in .env}
     ports:
       - "80:80"
       - "443:443"
@@ -295,7 +301,7 @@ services:
     restart: unless-stopped
     stop_grace_period: 40s
     environment:
-      OMNIROUTE_MEMORY_MB: "4096"
+      OMNIROUTE_MEMORY_MB: "3072"
     # Leave most of the 8 GB host for Postgres, ffmpeg and Whisper.
     mem_limit: 3g
     ports:
@@ -366,15 +372,28 @@ curl -fsS https://shorts.example.com/healthz
 docker compose -f docker-compose.aws.yml logs --tail=30 omniroute
 ```
 
-Open the OmniRoute dashboard from your PC through an SSH tunnel:
+Open the OmniRoute dashboard at `https://omniroute.shorts.example.com`
+(user `rajesh`, password chosen when you generated the hash):
+
+```bash
+# generate or replace the basic-auth hash in .env
+docker compose -f docker-compose.aws.yml exec caddy \
+  caddy hash-password --plaintext '<password>'
+docker compose -f docker-compose.aws.yml up -d caddy
+```
+
+The dashboard is a second Caddy site that reverse-proxies to
+`omniroute:20128`. It is still protected by basic auth plus OmniRoute's own
+login. If you prefer not to expose it, remove the `omniroute.$APP_DOMAIN`
+block from `deploy/Caddyfile` and use the tunnel instead:
 
 ```bash
 ssh -L 20128:127.0.0.1:20128 ubuntu@shorts.example.com
 # keep that session open, then browse http://localhost:20128
 ```
 
-Add your providers in that dashboard. Use `http://omniroute:20128/v1` as the
-base URL when configuring the Shorts app's AI settings, and create an
+Add your providers in that dashboard. Use `http://omniroute:20128/api/v1` as
+the base URL when configuring the Shorts app's AI settings, and create an
 OmniRoute API key there for the app.
 
 Enable Docker at boot and confirm the whole stack returns after a stop/start:
@@ -601,15 +620,21 @@ the next boot. The Elastic IP does not change.
 
 ### OmniRoute
 
-OmniRoute listens only on `127.0.0.1:20128`. Open its dashboard through an SSH
-tunnel, then configure providers yourself in the UI:
+OmniRoute listens on `127.0.0.1:20128` inside the host and is published to the
+internet only through Caddy's `omniroute.$APP_DOMAIN` site, behind HTTP basic
+auth (user `rajesh`) plus OmniRoute's own login:
+
+**https://omniroute.shorts.52.207.181.21.sslip.io**
+
+If you ever need to bypass Caddy, the loopback port still works through a
+tunnel:
 
 ```bash
 ssh -i shorts-deploy.pem -L 20128:127.0.0.1:20128 ubuntu@52.207.181.21
 # browse http://localhost:20128
 ```
 
-Inside the app, point the AI settings at `http://omniroute:20128/v1` with a
+Inside the app, point the AI settings at `http://omniroute:20128/api/v1` with a
 key you create in the OmniRoute dashboard. The container URL works because the
 backend and OmniRoute share the compose network.
 
