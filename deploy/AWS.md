@@ -36,18 +36,23 @@ All four users share the instance. The app already scopes jobs, settings,
 media, and OAuth credentials by `user_id`; `MAX_USERS=4` plus the invite code
 is the access boundary. Each user can connect their own YouTube OAuth client.
 
-Recommended size: **`m7i.xlarge` (4 vCPU, 16 GB)**. The account has an 8 vCPU
-On-Demand quota, so `m7i.2xlarge` (8 vCPU, 32 GB) is the largest single
-instance without a quota increase, but it spends the free-plan credits twice
-as fast. `m7i.xlarge` runs Postgres, the backend, Caddy/nginx, OmniRoute and
-one or two ffmpeg renders comfortably.
+Deployed size: **`m7i-flex.large` (2 vCPU, 8 GB)**. This FREE-plan account
+rejects every larger type with `InvalidParameterCombination: not eligible for
+Free Tier`; `m7i-flex.large` is the largest of the ten free-plan-eligible
+types. The 8 GB of RAM (four times `t3.small`) is the important part: Postgres,
+the backend, Caddy/nginx, OmniRoute and one ffmpeg render fit with headroom,
+while analysis jobs stay serialized on two vCPUs.
 
-Rough cost: **$0.2016/hour** while running in `us-east-1`, plus about
+Rough cost: **$0.09576/hour** while running in `us-east-1`, plus about
 $8/month for a 100 GB gp3 root volume and $3.60/month for the public IPv4.
-Running 12 hours a day is roughly **$75–85/month**. The account currently has
+Running 12 hours a day is roughly **$46–50/month**. The account currently has
 about **$119.67** in free-plan credits, so watch the remaining balance in the
-Billing console. Resize to `m7i.2xlarge` later if renders need more
-parallelism; the quota already allows it.
+Billing console.
+
+To go bigger, open **Billing → Account plan** and upgrade to the PAID plan;
+the credits carry over and the 8 vCPU quota then allows `m7i.2xlarge`
+(8 vCPU, 32 GB). Stop the instance, change its type, and start it again — all
+data stays on the root volume.
 
 ---
 
@@ -56,7 +61,7 @@ parallelism; the quota already allows it.
 Recommended baseline:
 
 - AMI: Ubuntu 24.04 LTS (x86_64)
-- Type: `m7i.xlarge` (4 vCPU, 16 GB)
+- Type: `m7i-flex.large` (2 vCPU, 8 GB), the largest FREE-plan-eligible type
 - Storage: **100 GB gp3 root volume**. Everything, including Postgres,
   media and OmniRoute, lives on this one volume. Set
   `DeleteOnTermination=false` so terminating the instance does not destroy
@@ -428,9 +433,10 @@ recommended unless all four have static addresses.
 
 - One backend container, one uvicorn process. The durable worker is
   in-process; do not scale backend replicas or uvicorn workers.
-- Set `WORKER_CONCURRENCY=2` in `.env` on `m7i.xlarge`. Analysis is still
-  serialized by an in-process lock, but the second worker can run a manual cut
-  or render while one analysis (including a live capture) holds the lock.
+- Set `WORKER_CONCURRENCY=2` in `.env` on `m7i-flex.large`. Analysis is still
+  serialized by an in-process lock shared by the worker threads, but the
+  second thread can run a manual cut or render while one analysis (including
+  a live capture) holds the lock. Drop to `1` if the instance swaps.
 - A live job can hold the analysis lock for up to 30 minutes (5 min scan plus
   the capture cap). Other analysis jobs wait; manual cuts and renders are
   small enough to queue behind them.
