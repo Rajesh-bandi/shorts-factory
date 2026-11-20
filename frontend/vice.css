@@ -18,8 +18,7 @@ html[data-palette="vice"] .chip,
 html[data-palette="vice"] .nav-item,
 html[data-palette="vice"] .quick-btn,
 html[data-palette="vice"] .recent-row,
-html[data-palette="vice"] .hook,
-html[data-palette="vice"] .hook-option,
+html[data-palette="vice"] .choice-option,
 html[data-palette="vice"] .job-top,
 html[data-palette="vice"] .history-card,
 html[data-palette="vice"] .toast-x {
@@ -754,7 +753,7 @@ html[data-palette="vice"] .pbar > span {
 
 html[data-palette="vice"] .recent-row:hover,
 html[data-palette="vice"] .quick-btn:hover,
-html[data-palette="vice"] .hook:hover {
+html[data-palette="vice"] .choice-option:hover {
   background: color-mix(in srgb, var(--accent) 11%, transparent);
   border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
 }

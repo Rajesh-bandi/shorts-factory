@@ -491,10 +491,10 @@ body.auth-locked .app, body.auth-locked .fx { visibility: hidden; }
 .cap-editor textarea { width: 100%; min-height: 230px; font-family: var(--mono); font-size: 11px; line-height: 1.7; }
 .upload-modal .field { margin-bottom: 12px; }
 .upload-modal textarea { min-height: 110px; }
-.hook-list { display: grid; gap: 8px; }
-.hook-option { text-align: left; padding: 11px 12px; border: 1px solid var(--line); border-radius: 7px;
+.choice-list { display: grid; gap: 8px; }
+.choice-option { text-align: left; padding: 11px 12px; border: 1px solid var(--line); border-radius: 7px;
   background: var(--panel2); color: var(--text); font: inherit; font-size: 12px; cursor: pointer; }
-.hook-option:hover { border-color: var(--accent); }
+.choice-option:hover { border-color: var(--accent); }
 .batch-note { color: var(--faint); font-size: 11px; }
 @media (max-width: 720px) { .account-copy { display: none; } .auth-card { padding: 22px; } }
 .job-publish-note { display: inline-flex; align-items: center; gap: 5px; color: var(--faint); font-size: 10px;

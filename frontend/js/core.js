@@ -19,7 +19,7 @@ export const state = {
   createMode: "auto", manualJobId: null, manualInputJob: null, capTimer: null, capTick: 0,
   history: [], historyLoaded: false, historySel: {}, historyQuery: "", historyFilter: "all",
   account: null, accountMode: "login", authConfig: null, appStarted: false, historyPoll: null,
-  localMode: false, prefsTimer: null, prefsDirty: false
+  localMode: false, prefsTimer: null, prefsDirty: false, liveCursor: {}
 };
 
 export const $ = (s, r = document) => r.querySelector(s);
@@ -67,6 +67,13 @@ export function jobEta(j) {
     };
   }
   if (j.status === "running") {
+    if (j.options?.live_scan) {
+      const waiting = j.stage === "live_pick" || j.options.live_phase === "picking";
+      return {
+        label: waiting ? "waiting for your spike pick" : "live · no fixed ETA",
+        title: "Live jobs follow chat spikes and your picks, so a fixed ETA does not apply"
+      };
+    }
     return {
       label: seconds > 0 ? `ETA ${shortEta(seconds)} left` : "estimating ETA…",
       title: seconds > 0 ? `Estimated finish around ${etaClock(j.eta_at)}` : "ETA appears once progress stabilizes"
@@ -101,7 +108,7 @@ export function statusMeta(status) {
     error: { label: "Failed", tone: "bad" }, canceled: { label: "Canceled", tone: "muted" } })[status] || { label: status || "—", tone: "muted" };
 }
 export function stageLabel(stage) {
-  return ({ queued: "Queued", downloading: "Reading source / fetching", recording: "Recording live", transcribing: "Transcript", analyzing: "AI picking moments",
+  return ({ queued: "Queued", downloading: "Reading source / fetching", recording: "Recording live", live_pick: "Waiting for your spike pick", live_scan: "Watching live chat", transcribing: "Transcript", analyzing: "AI picking moments",
     review: "Awaiting review", manual: "Manual cut ready", clipping: "Fetching ranges + rendering", uploading: "Uploading", done: "Done",
     canceling: "Canceling", canceled: "Canceled" })[stage] || stage || "Working";
 }

@@ -195,7 +195,73 @@ Reply with ONLY a JSON array, no other text:
     return out
 
 
-def _audio_energy(video_path, sample_sec=1.0):
+def pick_llm_window(title, segments, count, job_id, user_id, target, window_start,
+                    window_end, peak=None):
+    """Ask the LLM for the best self-contained clip inside one spike window."""
+    target = max(8, min(180, int(target or 45)))
+    try:
+        window_start = max(0.0, float(window_start or 0))
+        window_end = max(window_start + 4.0, float(window_end or 0))
+    except (TypeError, ValueError):
+        return []
+    window_segments = [
+        segment for segment in (segments or [])
+        if float(segment.get("end") or 0) > window_start
+        and float(segment.get("start") or 0) < window_end
+    ]
+    if not window_segments:
+        return []
+    lines = [
+        f"[{int(segment['start'])}-{int(segment['end'])}] {segment['text']}"
+        for segment in window_segments
+    ]
+    transcript = "\n".join(lines)
+    if len(transcript) > 30000:
+        transcript = transcript[:30000]
+    peak_line = f"Chat spike peak: {float(peak):.0f}s (recording time)\n" if peak is not None else ""
+    prompt = f"""You are cutting ONE YouTube Short from a live-stream moment that chat reacted to.
+
+Video title: {title}
+{peak_line}Allowed clip window: {window_start:.0f}-{window_end:.0f} seconds
+Target length: about {target} seconds, between {int(target * 0.6)} and {int(target * 1.4)} seconds
+
+Transcript with [start-end] second timestamps:
+{transcript}
+
+Pick the single strongest self-contained moment INSIDE the allowed window. Prefer the action or payoff that made chat react, keep enough context, and avoid dead air.
+Reply with ONLY a JSON array, no other text:
+[{{"start": <seconds>, "end": <seconds>, "title": "<punchy 3-6 word title>", "reason": "<one line why this will get views>"}}]"""
+    db.log(job_id, f"Asking AI to cut the selected chat-spike window at {window_start:.0f}-{window_end:.0f}s…")
+    try:
+        text = _llm_chat(user_id, [{"role": "user", "content": prompt}], timeout=120)
+    except Exception as e:
+        db.log(job_id, f"AI could not cut the selected spike window: {e}", "warn")
+        return []
+    picks = _parse_llm_json(text)
+    out = []
+    for pick in picks[:max(1, int(count or 1))]:
+        try:
+            start = float(pick["start"])
+            end = float(pick["end"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        start = max(window_start, min(window_end - 2.0, start))
+        end = max(window_start + 2.0, min(window_end, end))
+        if end <= start + 3:
+            continue
+        max_length = target * 1.4
+        if end - start > max_length:
+            end = start + max_length
+        out.append({
+            "start": round(start, 2),
+            "end": round(end, 2),
+            "title": str(pick.get("title") or "Chat spike moment")[:80],
+            "reason": str(pick.get("reason") or "AI picked this moment inside the chat spike")[:200],
+            "transcript": _window_text(window_segments, start, end)[:500],
+            "score": None,
+            "chat_peak": round(float(peak), 2) if peak is not None else None,
+        })
+    return out
     """Decode audio to mono pcm and compute RMS per second window."""
     cmd = [
         "ffmpeg", "-v", "quiet", "-i", video_path,

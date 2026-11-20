@@ -63,10 +63,8 @@ function renderAdvice(el, adv) {
   adv = adv || {};
   const next = adv.next_best_action || "Connect your channel and cut your first Short — the advisor gets sharper with data.";
   const actions = Array.isArray(adv.actions) ? adv.actions : [];
-  const hooks = Array.isArray(adv.hook_ideas) ? adv.hook_ideas : [];
   el.innerHTML = `<div class="next-action"><span class="na-label">next best action</span><p>${esc(next)}</p></div>
-    ${actions.length ? `<ul class="adv-list">${actions.slice(0, 4).map((a) => `<li>${esc(a)}</li>`).join("")}</ul>` : ""}
-    ${hooks.length ? `<div class="hooks"><div class="tw-label" style="margin-bottom:5px">hook ideas · click to copy</div>${hooks.slice(0, 3).map((h) => `<button class="hook" data-copy="${esc(h)}">${esc(h)}</button>`).join("")}</div>` : ""}`;
+    ${actions.length ? `<ul class="adv-list">${actions.slice(0, 4).map((a) => `<li>${esc(a)}</li>`).join("")}</ul>` : ""}`;
 }
 function renderRecentJobs() {
   const el = $("#recentJobs");

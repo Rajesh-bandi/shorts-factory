@@ -480,6 +480,21 @@ def _authors(events, start, end):
     }
 
 
+def _sample_texts(events, start, end, limit=3):
+    """A few chat lines so the user can recognise what the surge was about."""
+    texts = []
+    for event in events:
+        if not (start <= event["offset"] < end):
+            continue
+        text = " ".join(str(event.get("text") or "").split())[:90]
+        if not text or text in texts:
+            continue
+        texts.append(text)
+        if len(texts) >= limit:
+            break
+    return texts
+
+
 def _scan_window(target):
     try:
         target = float(target or 45)
@@ -529,6 +544,7 @@ def detect_spikes(events, duration, target=45):
             "ratio": round(count_in_window / baseline, 2),
             "start": round(start, 2),
             "end": round(end, 2),
+            "sample": _sample_texts(events, start, end),
         }
         if spikes and peak - spikes[-1]["peak"] < scan:
             # Overlapping scan windows describe the same surge; keep the peak.
@@ -633,6 +649,67 @@ def _overlaps(a, b):
         return float(a["start"]) < float(b["end"]) and float(a["end"]) > float(b["start"])
     except (KeyError, TypeError, ValueError):
         return False
+
+
+def merge_spikes(primary, extra):
+    """Combine detected spikes from the live watcher and the final parse."""
+    out = []
+    for spike in sorted(
+        list(primary or []) + list(extra or []),
+        key=lambda item: float(item.get("peak") or 0),
+    ):
+        try:
+            peak = float(spike["peak"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if any(abs(peak - float(existing["peak"])) <= 5.0 for existing in out):
+            continue
+        out.append(spike)
+    return out
+
+
+def candidate_for_spike(events, duration, spike, target=45, pad=None, segments=None):
+    """One dense, chat-ranked candidate inside a user-selected spike window."""
+    duration = max(1.0, float(duration or 0))
+    try:
+        peak = float(spike["peak"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    try:
+        target = max(8, min(180, int(target or 45)))
+    except (TypeError, ValueError):
+        target = 45
+    pad = float(pad if pad is not None else downloader.live_spike_pad_seconds())
+    left = max(0.0, peak - pad)
+    right = min(duration, peak + pad)
+    best = _best_window(events, left, right, target, peak)
+    if not best:
+        start = max(0.0, min(max(0.0, duration - target), peak - target / 2.0))
+        end = min(duration, start + target)
+        if end <= start + 1:
+            return None
+        best = {"start": start, "end": end, "count": 0, "authors": 0}
+    seconds = int(round(best["end"] - best["start"]))
+    count = int(best.get("count") or 0)
+    ratio = float(spike.get("ratio") or 0)
+    reason = (
+        f"{count} chat messages in the busiest {seconds}s near the spike"
+        if count
+        else f"Chat spike at {_time_label(peak)} — clip centred on the surge"
+    )
+    if ratio:
+        reason += f" ({ratio:.1f}× typical chat)"
+    return {
+        "start": round(best["start"], 2),
+        "end": round(best["end"], 2),
+        "title": f"Chat spike at {_time_label(peak)}",
+        "reason": reason,
+        "transcript": _window_text(segments, best["start"], best["end"]),
+        "score": ratio,
+        "chat_peak": round(peak, 2),
+        "chat_count": count,
+        "sample": spike.get("sample") or [],
+    }
 
 
 def merge_candidates(chat_candidates, normal_candidates, count):

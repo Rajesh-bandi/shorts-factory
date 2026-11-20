@@ -271,8 +271,8 @@ def _env_seconds(name, default, low, high):
 
 
 def live_chat_scan_seconds() -> int:
-    """How long to watch chat for the first spike before giving up."""
-    return _env_seconds("LIVE_CHAT_SCAN_SECONDS", 300, 30, 1800)
+    """How long to watch chat while the user skips to the next spike."""
+    return _env_seconds("LIVE_CHAT_SCAN_SECONDS", 900, 30, 7200)
 
 
 def live_spike_pad_seconds() -> int:
@@ -287,7 +287,12 @@ def live_spike_pad_seconds() -> int:
 
 def live_max_capture_seconds() -> int:
     """Hard safety cap for one live recording."""
-    return _env_seconds("LIVE_MAX_CAPTURE_SECONDS", 900, 120, 7200)
+    return _env_seconds("LIVE_MAX_CAPTURE_SECONDS", 1800, 120, 7200)
+
+
+def live_pick_timeout_seconds() -> int:
+    """How long to wait for a spike choice after the scan stops recording."""
+    return _env_seconds("LIVE_PICK_TIMEOUT_SECONDS", 300, 30, 3600)
 
 
 def live_record_stall_seconds() -> int:

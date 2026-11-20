@@ -4,7 +4,7 @@ import { toast, showModal, confirmDialog, confetti } from "./ui.js";
 import { go } from "./router.js";
 import { renderManualPanel } from "./create.js";
 import { renderRecentJobs } from "./dashboard.js";
-import { openHistoryClip, openUploadModal, openHookLab, openCaptionEditor, loadHistory } from "./history.js";
+import { openHistoryClip, openUploadModal, openCaptionEditor, loadHistory } from "./history.js";
 
 const actBtn = (act, id, title, ico) => `<button class="icon-btn" data-act="${act}" data-id="${id}" title="${title}" aria-label="${title}">${icon(ico)}</button>`;
 function filteredJobs() {
@@ -21,7 +21,8 @@ function filteredJobs() {
 function renderJobs(force = false) {
   const list = filteredJobs();
   const sig = JSON.stringify({ v: state.view, f: state.filter, q: state.jobQuery, o: state.jobOpen,
-    j: state.jobs.map((j) => [j.id, j.status, j.stage, Math.round((j.progress || 0) * 100), j.uploads.length, j.candidates.length, j.error ? 1 : 0, j.title]) });
+    j: state.jobs.map((j) => [j.id, j.status, j.stage, Math.round((j.progress || 0) * 100), j.uploads.length, j.candidates.length, j.error ? 1 : 0, j.title,
+      j.options?.live_scan ? [j.options.live_phase, (j.options.live_spikes || []).length, (j.options.live_spikes || []).slice(-1)[0]?.peak, (j.options.live_picks || []).length, !!j.options.live_decision] : 0]) });
   if (!force && sig === state.jobSig) return;
   state.jobSig = sig;
   if (state.view === "jobs") {
@@ -41,6 +42,71 @@ function updateRail() {
 }
 function emptyJobs() {
   return `<div class="empty"><span class="empty-icon">${icon("layers")}</span><strong>No jobs here yet</strong><p>Paste a YouTube link and the pipeline will fill this up.</p><button class="btn primary sm" data-go="create">${icon("plus")}New short</button></div>`;
+}
+function clockLabel(seconds) {
+  const total = Math.max(0, Math.floor(Number(seconds) || 0));
+  const h = Math.floor(total / 3600), m = Math.floor((total % 3600) / 60), s = total % 60;
+  return h ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}` : `${m}:${String(s).padStart(2, "0")}`;
+}
+function liveSpikeText(spike) {
+  const count = Number(spike.count || 0);
+  const ratio = Number(spike.ratio || 0);
+  const bits = [];
+  if (count) bits.push(`${count} messages`);
+  if (ratio) bits.push(`${ratio.toFixed(1)}× typical chat`);
+  return bits.join(" · ") || "Chat spike";
+}
+function livePanel(j) {
+  const o = j.options || {};
+  if (!o.live_scan || !["queued", "running"].includes(j.status)) return "";
+  const spikes = (Array.isArray(o.live_spikes) ? o.live_spikes : [])
+    .slice().sort((a, b) => Number(a.peak || 0) - Number(b.peak || 0));
+  const picks = Array.isArray(o.live_picks) ? o.live_picks : [];
+  let seen = state.liveCursor[j.id];
+  if (seen === undefined || seen === null) {
+    seen = picks.length ? Math.max(...picks.map((p) => Number(p.peak || 0))) : -1;
+    state.liveCursor[j.id] = seen;
+  }
+  const current = spikes.find((s) => Number(s.peak || 0) > Number(seen) + 0.5) || null;
+  const decided = !!o.live_decision;
+  const phase = o.live_phase || "scanning";
+  const waitingForPick = phase === "picking";
+  const processing = ["processing", "transcribing", "analyzing", "rendering"].includes(phase);
+  const needed = Math.max(1, Number(o.live_short_count || j.short_count || 1));
+  const currentPeak = current ? Number(current.peak) : null;
+  const canProceed = !decided && (picks.length || currentPeak !== null);
+  const samples = current && Array.isArray(current.sample) ? current.sample.slice(0, 2) : [];
+  const chips = picks.map((p) => `<span class="live-chip">${icon("check")}${clockLabel(p.peak)}<button class="live-chip-x" data-act="live-remove" data-id="${j.id}" data-peak="${Number(p.peak)}" title="Remove spike" aria-label="Remove spike ${clockLabel(p.peak)}">${icon("x")}</button></span>`).join("");
+  const status = processing
+    ? "Recording complete — AI is cutting the selected spike windows."
+    : decided
+      ? `Selected ${picks.length} spike${picks.length === 1 ? "" : "s"} — finishing the recording, then AI cuts the clips.`
+      : waitingForPick
+        ? `Recording stopped. Pick a spike to continue; the strongest is auto-selected if you wait.`
+        : `Recording started at job start so no spike is missed. Pick one or keep watching for the next spike.`;
+  const spikeBox = current
+    ? `<div class="live-spike">
+        <div class="live-time">${clockLabel(currentPeak)}</div>
+        <div class="live-info">
+          <strong>${esc(liveSpikeText(current))}</strong>
+          ${samples.length ? `<small>${samples.map((t) => `“${esc(t)}”`).join(" ")}</small>` : ""}
+        </div>
+        ${!decided && !processing ? `<button class="btn primary sm" data-act="live-add" data-id="${j.id}" data-peak="${currentPeak}">${icon("plus")}Use this spike</button>
+        <button class="btn ghost sm" data-act="live-next" data-id="${j.id}" data-peak="${currentPeak}">Next spike ${icon("chevron-right")}</button>` : ""}
+      </div>`
+    : `<div class="live-waiting">${icon("clock")}${decided ? "Recording the tail after your last pick…" : "Waiting for the next chat spike…"}</div>`;
+  return `<div class="live-panel${decided ? " decided" : ""}">
+    <div class="live-head"><span class="live-dot"></span><strong>Live spike picker</strong>
+      <span class="live-phase">${stageLabel(j.stage)}${j.status === "running" ? " · " + elapsedLabel(j.started_at || j.created_at) : ""}</span></div>
+    <p class="live-hint">${status}</p>
+    ${spikeBox}
+    ${chips ? `<div class="live-picks"><span class="live-picks-label">picked</span>${chips}</div>` : ""}
+    <div class="live-actions">
+      ${canProceed ? `<button class="btn primary sm" data-act="live-proceed" data-id="${j.id}"${currentPeak !== null ? ` data-peak="${currentPeak}"` : ""}>${icon("scissors")}Proceed with ${Math.max(1, picks.length + (currentPeak !== null && !picks.some((p) => Math.abs(Number(p.peak) - currentPeak) < 0.6) ? 1 : 0))} spike${(picks.length + (currentPeak !== null && !picks.some((p) => Math.abs(Number(p.peak) - currentPeak) < 0.6) ? 1 : 0)) === 1 ? "" : "s"}</button>` : ""}
+      ${!decided && picks.length ? `<button class="btn ghost sm" data-act="live-clear" data-id="${j.id}">Clear</button>` : ""}
+      <span class="live-target">target ${needed} clip${needed === 1 ? "" : "s"} · ±${Number(o.live_pad || 60)}s window</span>
+    </div>
+  </div>`;
 }
 function jobCard(j) {
   const s = statusMeta(j.status);
@@ -63,6 +129,7 @@ function jobCard(j) {
     </div>
     ${showBar ? `<div class="pbar"><span style="width:${j.status === "review" ? 100 : pct}%"></span></div><div class="job-meta"><span>${stageLabel(j.stage)}${j.status === "running" ? " · " + elapsedLabel(j.started_at || j.created_at) + " elapsed" : ""}</span><span class="job-eta" title="${eta ? esc(eta.title) : ""}">${j.status === "review" ? "ready" : eta ? `${pct}% · ${esc(eta.label)}` : `${pct}%`}</span></div>` : ""}
     ${j.error ? `<div class="alert bad" style="margin:10px 16px 12px">${icon("alert")}<span>${esc(j.error)}</span></div>` : ""}
+    ${livePanel(j)}
     ${open ? jobBody(j) : ""}
   </article>`;
 }
@@ -72,14 +139,14 @@ function jobBody(j) {
 function stageRail(j) {
   const order = ["downloading", "transcribing", "analyzing", "review", "clipping", "uploading", "done"];
   const names = ["source", "transcript", "ai pick", "review", "render", "upload", "done"];
-  const stage = j.stage === "recording" ? "downloading" : (j.stage || j.status);
+  const stage = j.stage === "recording" || j.stage === "live_pick" ? "downloading" : (j.stage || j.status);
   let cur = order.indexOf(j.status === "done" ? "done" : stage);
   if (cur < 0) cur = order.indexOf(j.status);
   if (cur < 0) cur = j.status === "queued" ? -1 : 0;
   return `<div class="stages">${names.map((n, i) => `<span class="stage-step${i < cur ? " done" : i === cur ? " active" : ""}">${i < cur ? icon("check") : ""}${n}</span>`).join("")}</div>`;
 }
 function editSignature(candidates) {
-  return JSON.stringify((candidates || []).map((c) => [Number(c.start), Number(c.end), String(c.title || ""), Array.isArray(c.hooks) ? c.hooks : []]));
+  return JSON.stringify((candidates || []).map((c) => [Number(c.start), Number(c.end), String(c.title || "")]));
 }
 function editDuration(ed) {
   return Math.max(0, Number(ed?.end || 0) - Number(ed?.start || 0));
@@ -88,18 +155,12 @@ function ensureEdits(j) {
   const candidates = j.candidates || [];
   const sig = editSignature(candidates);
   if (!state.edit[j.id] || state.edit[j.id].length !== candidates.length || state.editSig[j.id] !== sig) {
-    const hookMode = jobOpt(j, "hook_mode", "auto");
-    state.edit[j.id] = candidates.map((c) => {
-      const hooks = Array.isArray(c.hooks) ? c.hooks.map((hook) => String(hook || "")).filter(Boolean) : [];
-      return {
-        start: Number(c.start),
-        end: Number(c.end),
-        title: c.title || "Highlight",
-        hooks,
-        hook: c.hook != null ? String(c.hook) : (hookMode === "auto" ? (hooks[0] || "") : ""),
-        picked: true
-      };
-    });
+    state.edit[j.id] = candidates.map((c) => ({
+      start: Number(c.start),
+      end: Number(c.end),
+      title: c.title || "Highlight",
+      picked: true
+    }));
     state.editSig[j.id] = sig;
     return true;
   }
@@ -111,26 +172,19 @@ function reviewSection(j) {
   const caption = jobOpt(j, "caption_preset", "gruvbox");
   const animation = jobOpt(j, "caption_animation", "static");
   const reframe = jobOpt(j, "reframe", "crop");
-  const hookMode = jobOpt(j, "hook_mode", "auto");
   const rows = j.candidates.map((c, i) => {
     const ed = state.edit[j.id][i];
     const dur = editDuration(ed);
-    const hooks = Array.isArray(ed.hooks) ? ed.hooks : [];
-    const hookOptions = hooks.length
-      ? `<select class="cand-hook-select" data-field="hook" aria-label="Hook line"><option value="">No hook line</option>${hooks.map((hook) => `<option value="${esc(hook)}"${hook === ed.hook ? " selected" : ""}>${esc(hook)}</option>`).join("")}</select>`
-      : hookMode === "none" ? "" : `<span class="cand-hook-hint">${icon("wand")} AI hook line will be added at render</span>`;
     return `<div class="cand${ed.picked === false ? " off" : ""}" data-job="${j.id}" data-idx="${i}">
       <input type="checkbox" class="cand-pick"${ed.picked === false ? "" : " checked"} title="Include this clip" aria-label="Include clip ${i + 1}">
       <div class="cand-body">
         <input class="cand-title" data-field="title" value="${esc(ed.title)}" aria-label="Clip title">
         <div class="cand-reason">${esc(c.reason || "Highlight")}</div>
-        ${hookOptions ? `<div class="cand-hook"><span class="cand-hook-label">Hook</span>${hookOptions}</div>` : ""}
       </div>
       <div class="time-field"><label>in</label><input type="number" step="0.1" min="0" data-field="start" value="${Number(ed.start).toFixed(1)}"></div>
       <div class="time-field"><label>out</label><input type="number" step="0.1" min="0" data-field="end" value="${Number(ed.end).toFixed(1)}"></div>
       <span class="dur">${Math.round(dur)}s</span>
       <button class="icon-btn cand-preview" data-act="preview" data-id="${j.id}" data-idx="${i}" title="Preview source at this moment" aria-label="Preview source at this moment">${icon("play")}</button>
-      <button class="icon-btn" data-act="hooklab" data-id="${j.id}" data-idx="${i}" title="Hook Lab — AI title options" aria-label="Hook Lab">${icon("wand")}</button>
       <button class="icon-btn" data-act="captions" data-id="${j.id}" data-idx="${i}" title="Edit captions" aria-label="Edit captions">${icon("terminal")}</button>
     </div>`;
   }).join("");
@@ -282,10 +336,32 @@ async function handleJobClick(e) {
   }
   if (act === "preview") return openPreview(id, Number(btn.dataset.idx));
   if (act === "play") return btn.dataset.clip ? openHistoryClip(Number(btn.dataset.clip)) : openClip(btn.dataset.file);
-  if (act === "hooklab") return openHookLab(id, Number(btn.dataset.idx));
   if (act === "captions") return openCaptionEditor(id, Number(btn.dataset.idx));
   if (act === "upload") return openUploadModal(Number(btn.dataset.clip));
   if (!job) return;
+  if (act === "live-next") {
+    state.liveCursor[id] = Number(btn.dataset.peak || 0);
+    renderJobs(true);
+    return;
+  }
+  if (act === "live-add" || act === "live-remove" || act === "live-clear" || act === "live-proceed") {
+    const body = { action: act === "live-add" ? "add" : act === "live-remove" ? "remove" : act === "live-clear" ? "clear" : "proceed" };
+    if (btn.dataset.peak) body.peak = Number(btn.dataset.peak);
+    btn.classList.add("loading");
+    btn.disabled = true;
+    try {
+      await api(`/jobs/${id}/live/pick`, { method: "POST", body: JSON.stringify(body) });
+      if (act === "live-add" || act === "live-proceed") state.liveCursor[id] = body.peak ?? state.liveCursor[id];
+      if (act === "live-clear") state.liveCursor[id] = -1;
+      toast(act === "live-proceed" ? "Spike selection locked — finishing the recording" : act === "live-clear" ? "Spike picks cleared" : act === "live-remove" ? "Spike removed" : `Spike at ${clockLabel(body.peak)} added`, "ok", "Live picker");
+      pollJobs(true);
+    } catch (err) {
+      toast(err.message, "err");
+      btn.classList.remove("loading");
+      btn.disabled = false;
+    }
+    return;
+  }
   if (act === "all" || act === "none") {
     const card = btn.closest(".job");
     const on = act === "all";
@@ -315,12 +391,12 @@ async function handleJobClick(e) {
     return;
   }
   if (act === "retry") {
-    try { await api(`/jobs/${id}/retry`, { method: "POST" }); toast(`Job #${id} queued again`, "ok"); state.logs[id] = []; state.logCursor[id] = 0; delete state.edit[id]; delete state.editSig[id]; state.jobOpen[id] = true; pollJobs(true); } catch (err) { toast(err.message, "err"); }
+    try { await api(`/jobs/${id}/retry`, { method: "POST" }); toast(`Job #${id} queued again`, "ok"); state.logs[id] = []; state.logCursor[id] = 0; delete state.edit[id]; delete state.editSig[id]; delete state.liveCursor[id]; state.jobOpen[id] = true; pollJobs(true); } catch (err) { toast(err.message, "err"); }
     return;
   }
   if (act === "delete") {
     if (!(await confirmDialog(`Delete job #${id}?`, "This removes the job, its log and every rendered file for this job. This cannot be undone.", "Delete", true))) return;
-    try { await api(`/jobs/${id}`, { method: "DELETE" }); delete state.jobOpen[id]; delete state.edit[id]; delete state.editSig[id]; toast("Job deleted", "warn"); pollJobs(true); } catch (err) { toast(err.message, "err"); }
+    try { await api(`/jobs/${id}`, { method: "DELETE" }); delete state.jobOpen[id]; delete state.edit[id]; delete state.editSig[id]; delete state.liveCursor[id]; toast("Job deleted", "warn"); pollJobs(true); } catch (err) { toast(err.message, "err"); }
   }
 }
 function handleJobInput(e) {
@@ -334,8 +410,8 @@ function handleJobInput(e) {
   if (pick) { ed.picked = pick.checked; row.classList.toggle("off", !pick.checked); return; }
   const field = e.target.dataset.field;
   if (!field) return;
-  ed[field] = field === "title" || field === "hook" ? e.target.value : Number(e.target.value);
-  if (field !== "title" && field !== "hook") updateDur(row);
+  ed[field] = field === "title" ? e.target.value : Number(e.target.value);
+  if (field !== "title") updateDur(row);
 }
 function updateDur(row) {
   const id = Number(row.dataset.job), idx = Number(row.dataset.idx);
@@ -363,12 +439,9 @@ async function renderSelected(id, btn) {
     const start = Number(row.querySelector('[data-field="start"]').value);
     const end = Number(row.querySelector('[data-field="end"]').value);
     const title = row.querySelector('[data-field="title"]').value.trim();
-    const hookEl = row.querySelector('[data-field="hook"]');
     const dur = ed ? editDuration(ed) : end - start;
     if (!(end > start + 1) || dur <= 1 || dur > 120) { row.classList.add("bad"); bad = true; return; }
     const clip = { index: idx, start, end, title: title || `Highlight ${idx + 1}` };
-    if (hookEl) clip.hook = hookEl.value;
-    else if (ed?.hook) clip.hook = ed.hook;
     clips.push(clip);
   });
   if (bad) return toast("Check the in/out points — clips must be 2–120s", "err");

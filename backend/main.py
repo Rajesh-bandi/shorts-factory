@@ -351,7 +351,6 @@ class JobCreate(BaseModel):
     caption_box: bool | None = None
     caption_align: bool | None = None
     clip_duration: int | None = None
-    hook_mode: str | None = None
     chat_highlights: bool | None = None
     reframe: str | None = None
 
@@ -377,7 +376,6 @@ class ClipEdit(BaseModel):
     start: float | None = None
     end: float | None = None
     title: str | None = None
-    hook: str | None = None
 
 
 class JobSelect(BaseModel):
@@ -394,13 +392,18 @@ class JobSelect(BaseModel):
     caption_uppercase: bool | None = None
     caption_box: bool | None = None
     caption_align: bool | None = None
-    hook_mode: str | None = None
     reframe: str | None = None
 
 
 class ClipDelete(BaseModel):
     ids: list[int] = Field(default_factory=list)
     all: bool = False
+
+
+class LivePick(BaseModel):
+    action: str = "add"
+    peak: float | None = None
+    spike: dict | None = None
 
 
 class ClipUpload(BaseModel):
@@ -427,7 +430,6 @@ class BatchCreate(BaseModel):
     short_count: int = 2
     privacy: str | None = None
     clip_duration: int | None = None
-    hook_mode: str | None = None
     chat_highlights: bool | None = None
     reframe: str | None = None
     caption_preset: str | None = None
@@ -450,7 +452,6 @@ def _job_options(payload):
             "caption_box": getattr(payload, "caption_box", None),
             "caption_align": getattr(payload, "caption_align", None),
             "clip_duration": getattr(payload, "clip_duration", None),
-            "hook_mode": getattr(payload, "hook_mode", None),
             "chat_highlights": getattr(payload, "chat_highlights", None),
             "reframe": getattr(payload, "reframe", None),
         }.items() if v is not None
@@ -640,6 +641,21 @@ def rerender_job(job_id: int, user: CurrentUser):
     return {"ok": True, "clips": len(indices)}
 
 
+@app.post("/api/jobs/{job_id}/live/pick")
+def live_pick(job_id: int, payload: LivePick, user: CurrentUser):
+    job = db.get_job(job_id, user["id"])
+    if not job:
+        raise HTTPException(404, "Job not found")
+    try:
+        result = pipeline.live_pick(
+            job_id, user["id"], action=payload.action,
+            spike=payload.spike, peak=payload.peak,
+        )
+    except RuntimeError as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True, **result}
+
+
 @app.post("/api/jobs/{job_id}/cancel")
 def cancel_job(job_id: int, user: CurrentUser):
     job = db.get_job(job_id, user["id"])
@@ -692,13 +708,13 @@ def _purge_media(user_id, job_id, clips=()):
             pass
 
 
-# ---------- review preview / hooks / captions ----------
-class HookRequest(BaseModel):
+# ---------- review preview / captions ----------
+class PreviewRequest(BaseModel):
     index: int
 
 
 @app.post("/api/jobs/{job_id}/preview")
-def preview_candidate(job_id: int, payload: HookRequest, user: CurrentUser):
+def preview_candidate(job_id: int, payload: PreviewRequest, user: CurrentUser):
     try:
         result = pipeline.preview_candidate(job_id, payload.index, user["id"])
     except Exception as e:
@@ -708,18 +724,6 @@ def preview_candidate(job_id: int, payload: HookRequest, user: CurrentUser):
         "url": f"/media/{result['filename']}",
         "duration": result["duration"],
     }
-
-
-@app.post("/api/jobs/{job_id}/hooklab")
-def hook_lab(job_id: int, payload: HookRequest, user: CurrentUser):
-    job = db.get_job(job_id, user["id"])
-    if not job:
-        raise HTTPException(404, "Job not found")
-    try:
-        candidate = json.loads(job["candidates"] or "[]")[payload.index]
-    except (IndexError, TypeError, json.JSONDecodeError):
-        raise HTTPException(404, "Candidate not found")
-    return assistant.hook_lab(user["id"], job, candidate)
 
 
 @app.get("/api/jobs/{job_id}/candidates/{idx}/captions")
@@ -1001,7 +1005,7 @@ def get_advice(user: CurrentUser):
     try:
         return advisor.advise(user["id"])
     except Exception as e:
-        return {"source": "error", "next_best_action": f"Advisor unavailable: {e}", "actions": [], "hook_ideas": []}
+        return {"source": "error", "next_best_action": f"Advisor unavailable: {e}", "actions": []}
 
 
 # ---------- diagnostics / AI ----------

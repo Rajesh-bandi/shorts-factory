@@ -6,7 +6,7 @@ import { populateCreateDefaults } from "./create.js";
 import { CAPTION_STYLES } from "./caption-styles.js";
 
 const SETTING_IDS = ["yt_client_id", "yt_client_secret", "default_privacy", "upload_tags", "category_id",
-  "llm_base_url", "llm_api_key", "llm_model", "whisper_model", "gpu_enabled", "chat_highlights", "short_length", "clip_duration", "hook_mode",
+  "llm_base_url", "llm_api_key", "llm_model", "whisper_model", "gpu_enabled", "chat_highlights", "short_length", "clip_duration",
   "reframe", "resolution", "quality", "caption_preset", "caption_size", "caption_position",
   "caption_color", "caption_highlight", "caption_animation", "caption_uppercase", "caption_box", "output_dir"];
 

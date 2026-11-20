@@ -12,7 +12,6 @@ function populateCreateDefaults() {
   const set = (sel, val) => { const el = $(sel); if (el && val !== undefined && val !== null && val !== "") el.value = String(val); };
   set("#createPrivacy", s.default_privacy || "public");
   set("#createDuration", s.clip_duration || s.short_length || 45);
-  set("#createHookMode", s.hook_mode || "auto");
   set("#createReframe", s.reframe || "crop");
   const preset = CAPTION_STYLES[s.caption_preset] ? s.caption_preset : "gruvbox";
   set("#caption_preset", preset);
@@ -99,7 +98,6 @@ function setCreateMode(mode) {
   if ($("#manualTimes")) $("#manualTimes").hidden = !manual;
   if ($("#durationField")) $("#durationField").hidden = manual;
   if ($("#autoUploadField")) $("#autoUploadField").hidden = manual || batch;
-  if ($("#hookField")) $("#hookField").hidden = manual;
   if ($("#createFlow")) $("#createFlow").hidden = manual;
   if ($("#createActive")) $("#createActive").hidden = manual;
   if ($("#manualPanel")) $("#manualPanel").hidden = !manual;
@@ -126,7 +124,6 @@ async function queueBatch() {
       short_count: Number($("#batchCount").value) || 2,
       privacy: $("#createPrivacy").value,
       clip_duration: Number($("#createDuration").value) || 45,
-      hook_mode: $("#createHookMode")?.value || "auto",
       reframe: $("#createReframe").value,
       ...captionOptions()
     }) });
@@ -181,7 +178,6 @@ async function startAutoJob(url) {
       url, short_count: state.count,
       privacy: $("#createPrivacy").value,
       clip_duration: Number($("#createDuration").value) || 45,
-      hook_mode: $("#createHookMode")?.value || "auto",
       reframe: $("#createReframe").value,
       auto_upload: state.createMode === "auto" && !!$("#createAutoUpload")?.checked,
       ...captionOptions()

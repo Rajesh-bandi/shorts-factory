@@ -132,7 +132,7 @@ GitHub Actions for both platforms and publishes the installers and
 
 - Transcript-first analysis without downloading the full video.
 - AI moment selection, or local transcript/audio heuristics without an API key.
-- Review candidates before rendering: trim, rename, cut sequences, Hook Lab
+- Review candidates before rendering: trim, rename, cut sequences
   titles, per-word caption editing.
 - Section-only downloads, cached retries, CPU/GPU rendering, automated QA.
 - Live-stream support: records a configurable segment, then finds and renders
@@ -178,17 +178,20 @@ retention/watch-time metrics.
 ## Pipeline
 
 1. Read metadata and English captions without downloading video.
-   For an active live stream, record it locally first. Live links always use
-   chat spikes: watch chat for the first surge (`LIVE_CHAT_SCAN_SECONDS`),
-   record `LIVE_SPIKE_PAD_SECONDS` after each surge (live cannot be rewound),
-   stop once the requested number of clips has its post-roll, and never exceed
-   `LIVE_MAX_CAPTURE_SECONDS`. No chat or no spike fails the job with a clear
-   error.
+   For an active live stream, recording starts immediately so no spike is
+   missed. Chat surges are published to the job card as they are detected;
+   pick one with **Proceed**, or **Next spike** to keep watching. The app
+   records `LIVE_SPIKE_PAD_SECONDS` after the last chosen surge (live cannot
+   be rewound), then transcribes the recording and lets AI cut one clip inside
+   each chosen surge window. Recording never exceeds
+   `LIVE_MAX_CAPTURE_SECONDS`; if no pick arrives within
+   `LIVE_PICK_TIMEOUT_SECONDS`, the strongest spike is auto-selected. No chat
+   or no spike fails the job with a clear error.
 2. AI selects moments from the timed transcript. Long videos are map-reduced in
    overlapping windows so the end of a two-hour video is not dropped. Without
-   AI, a transcript hook heuristic is used.
-3. Review candidates before any media download: trim in/out, rename, use Hook
-   Lab for AI title options, or edit the exact caption lines.
+   AI, a transcript heuristic is used.
+3. Review candidates before any media download: trim in/out, rename, or edit
+   the exact caption lines.
 4. Download only selected sections, then crop/reframe to 1080×1920 and burn
    captions. A full-source download is a fallback only when section extraction
    fails; cached sections are reused on retry/re-render.
@@ -229,9 +232,10 @@ the local server to a public network.
 | `MEDIA_RETENTION_DAYS` | Reserved cleanup setting; not enforced by the backend yet (0 = keep) |
 | `JOB_SOURCE_RETENTION_DAYS` | Reserved source-cleanup setting; not enforced yet (0 = keep) |
 | `DEFAULT_JOB_SECONDS` | Fallback ETA before enough job history exists |
-| `LIVE_CHAT_SCAN_SECONDS` | Watch chat for the first spike (default 300, 30–1800) |
+| `LIVE_CHAT_SCAN_SECONDS` | How long to keep watching for a next spike (default 900, 30–7200) |
 | `LIVE_SPIKE_PAD_SECONDS` | Record after each spike; live has no rewind (default 60, 30–900) |
-| `LIVE_MAX_CAPTURE_SECONDS` | Hard safety cap per live capture (default 900, 120–7200) |
+| `LIVE_MAX_CAPTURE_SECONDS` | Hard safety cap per live capture (default 1800, 120–7200) |
+| `LIVE_PICK_TIMEOUT_SECONDS` | Auto-pick the strongest spike if nobody chooses (default 300, 30–3600) |
 | `LIVE_RECORD_STALL_SECONDS` | Fail when ffmpeg writes no data (default 120, 60–600) |
 
 ## Optional multi-user server

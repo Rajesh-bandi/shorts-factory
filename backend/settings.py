@@ -23,7 +23,6 @@ KEYS = [
     "chat_highlights",
     "short_length",
     "clip_duration",
-    "hook_mode",
     "auto_upload",
     "reframe",
     "resolution",

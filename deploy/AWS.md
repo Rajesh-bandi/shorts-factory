@@ -206,9 +206,10 @@ the server; a clone of an older commit will deploy the previous UI.
 set them explicitly if you want different bounds:
 
 ```dotenv
-LIVE_CHAT_SCAN_SECONDS=300      # watch chat up to 5 min for the first spike
+LIVE_CHAT_SCAN_SECONDS=900      # keep watching chat up to 15 min for a next spike
 LIVE_SPIKE_PAD_SECONDS=60       # record 60 s after each spike (no rewind on live)
-LIVE_MAX_CAPTURE_SECONDS=900    # hard safety cap: 15 min per live job
+LIVE_MAX_CAPTURE_SECONDS=1800   # hard safety cap: 30 min per live job
+LIVE_PICK_TIMEOUT_SECONDS=300   # auto-pick the strongest spike after 5 min
 LIVE_RECORD_STALL_SECONDS=120   # fail if ffmpeg writes nothing for 2 min
 ```
 

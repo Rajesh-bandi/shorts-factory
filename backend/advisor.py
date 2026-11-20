@@ -8,22 +8,14 @@ from . import analytics, settings
 def _rule_based(user_id):
     data = analytics.summary(user_id)
     tips = list(data.get("insights") or [])
-    top = (data.get("top_videos") or [{}])[0]
-    title = top.get("title") or "your best clip"
-    hooks = [
-        f"Open on the reaction, not the setup — start '{title}' one beat later.",
-        "Lead with the loudest 1.5 seconds, then explain nothing.",
-        "End on an unresolved beat so the loop replays the clip.",
-    ]
     return {
         "source": "rules",
         "next_best_action": tips[0] if tips else "Upload your first Short — every insight improves once there is data.",
         "actions": tips[1:5] or [
             "Batch three clips from one long video while the context is fresh.",
-            "Write the first-frame hook before you pick the clip.",
+            "Cut on the reaction, not the setup.",
             "Post at the same hour for a week, then read the analytics.",
         ],
-        "hook_ideas": hooks,
     }
 
 
@@ -56,8 +48,7 @@ Channel data (JSON): {json.dumps(context)[:8000]}
 Give short, concrete, prioritized advice. Reply with ONLY a JSON object:
 {{
   "next_best_action": "<the single most impactful thing to do next, one sentence>",
-  "actions": ["<action 1>", "<action 2>", "<action 3>", "<action 4>"],
-  "hook_ideas": ["<clip hook idea 1>", "<clip hook idea 2>", "<clip hook idea 3>"]
+  "actions": ["<action 1>", "<action 2>", "<action 3>", "<action 4>"]
 }}"""
 
         import requests
@@ -82,7 +73,6 @@ Give short, concrete, prioritized advice. Reply with ONLY a JSON object:
         out["source"] = "llm"
         out.setdefault("next_best_action", "")
         out.setdefault("actions", [])
-        out.setdefault("hook_ideas", [])
         if not out["next_best_action"]:
             return _rule_based(user_id)
         return out
