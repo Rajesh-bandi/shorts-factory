@@ -184,15 +184,20 @@ Generate secrets with `openssl rand -hex 32` (key) and
 
 ```dotenv
 APP_MODE=multi
-APP_DOMAIN=shorts.example.com
-APP_BASE_URL=https://shorts.example.com
-OAUTH_REDIRECT_URI=https://shorts.example.com/api/auth/callback
+APP_DOMAIN=api.example.com
+APP_BASE_URL=https://api.example.com
+FRONTEND_BASE_URL=https://app.example.com
+OAUTH_REDIRECT_URI=https://api.example.com/api/auth/callback
 APP_SECRET_KEY=<64-char-random-hex>
 REGISTRATION_INVITE_CODE=<private-invite-string>
 MAX_USERS=4
 COOKIE_SECURE=true
+# Use none while the Vercel URL is a different site; switch to lax after
+# app.<domain> is live so cookies are same-site and more reliable.
+COOKIE_SAMESITE=none
 SESSION_TTL_DAYS=30
 DEFAULT_PRIVACY=private
+LLM_DEFAULT_MODEL=antigravity/gemini-3.8-flash-low
 
 POSTGRES_DB=shorts
 POSTGRES_USER=shorts
@@ -213,6 +218,10 @@ OMNIROUTE_BASIC_AUTH_HASH='$2a$14$...'
 Notes:
 
 - `COOKIE_SECURE=true` requires HTTPS. Do not test login over plain HTTP.
+- `FRONTEND_BASE_URL` is the Vercel origin; OAuth returns there after login.
+- `COOKIE_SAMESITE=none` is required while the frontend and API are on
+  different sites (`*.vercel.app` and the EC2 host). Switch it to `lax` after
+  `app.<domain>` and `api.<domain>` are live.
 - `REGISTRATION_INVITE_CODE` is enforced only after the first account exists.
 - `MAX_USERS=4` counts the owner. There are three invite slots.
 - The retention variables are currently **not enforced by the backend**.

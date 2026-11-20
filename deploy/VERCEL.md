@@ -9,6 +9,14 @@ Current URLs until the custom domain is connected:
 - API: **https://shorts.52.207.181.21.sslip.io**
 - OmniRoute: **https://omniroute.shorts.52.207.181.21.sslip.io**
 
+The Vercel project is `shorts-factory` in the team
+`rajesh-bandis-projects-9c708eb1`. It is linked to
+`Rajesh-bandi/shorts-factory` with root directory `frontend` and auto-deploys
+every push to `main`. There is no build step.
+
+> The Vercel token used to create the project was shared in chat. Rotate it
+> after the setup is finished.
+
 ```
 browser
   |
@@ -27,7 +35,7 @@ media never passes through Vercel:
 
 - `app.<domain>` — Vercel project, root directory `frontend`
 - `api.<domain>` — EC2 Elastic IP `52.207.181.21`, DNS-only in Cloudflare
-- `omniroute.<domain>` — optional, also the Elastic IP, DNS-only
+- `omniroute.api.<domain>` — optional, also the Elastic IP, DNS-only
 
 ## 1. Vercel access
 
@@ -77,7 +85,7 @@ npx vercel deploy frontend --prod \
 | --- | --- | --- | --- |
 | CNAME | `app` | value Vercel shows (`cname.vercel-dns.com`) | DNS only |
 | A | `api` | `52.207.181.21` | DNS only (grey cloud) |
-| A | `omniroute` | `52.207.181.21` | DNS only (grey cloud) |
+| A | `omniroute.api` | `52.207.181.21` | DNS only (grey cloud) |
 
 Caddy needs direct HTTP-01/TLS-ALPN access to `api` and `omniroute`, so do not
 orange-cloud those two records. Add `app.<domain>` in Vercel -> Project ->
@@ -103,8 +111,10 @@ docker compose -f docker-compose.aws.yml up -d backend caddy
 ```
 
 `FRONTEND_BASE_URL` controls the post-OAuth redirect. `COOKIE_SAMESITE=none`
-is required because the frontend and API are different sites; it only works
-with `COOKIE_SECURE=true` over HTTPS.
+is required while the frontend uses a `*.vercel.app` URL because that is a
+different site from the API; it only works with `COOKIE_SECURE=true` over
+HTTPS. After `app.<domain>` and `api.<domain>` are live, switch it to `lax`
+(same site) for more reliable cookies.
 
 ## 5. Google OAuth callback
 
