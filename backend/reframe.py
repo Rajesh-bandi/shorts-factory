@@ -42,6 +42,10 @@ def _face_samples(path, start, duration, max_samples=240):
         import cv2
     except ImportError:
         return []
+    # OpenCV 5.x headless builds can ship without the objdetect bindings, so
+    # check for the cascade API before opening the video.
+    if not hasattr(cv2, "CascadeClassifier") or not hasattr(cv2, "data"):
+        return []
     cap = cv2.VideoCapture(path)
     if not cap or not cap.isOpened():
         return []
