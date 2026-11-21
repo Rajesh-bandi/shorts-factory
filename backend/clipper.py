@@ -5,7 +5,7 @@ import signal
 import subprocess
 import time
 
-from . import config, db, gpu
+from . import config, db, gpu, reframe as reframe_mod
 
 MEDIA_DIR = str(config.MEDIA_DIR)
 
@@ -642,25 +642,38 @@ def make_clip(video_path, cand, index, job_id, segments, stage_cb, options=None,
         has_subs = os.path.exists(ass_path) and os.path.getsize(ass_path) > 0
 
     fps = 30
-    reframe = str(opts.get("reframe", "crop"))
+    reframe_mode = str(opts.get("reframe", "crop"))
+    plan = None
+    if reframe_mode == "auto":
+        try:
+            plan = reframe_mod.plan_crop(video_path, start, dur)
+            reframe_mod.log_plan(job_id, plan, f" for short {index}")
+        except Exception as e:
+            db.log(job_id, f"Auto reframe failed ({e}) — using centre crop", "warn")
+            plan = {"mode": "center", "frac": 0.5}
 
-    if reframe == "blur":
-        chain = (
-            f"[0:v]scale={width}:{height}:force_original_aspect_ratio=increase,"
-            f"crop={width}:{height},boxblur=30:2,eq=brightness=-0.12[bg];"
-            f"[0:v]scale={width}:-2[fg];"
-            f"[bg][fg]overlay=(W-w)/2:(H-h)/2[base]"
-        )
+    blur_chain = (
+        f"[0:v]scale={width}:{height}:force_original_aspect_ratio=increase,"
+        f"crop={width}:{height},boxblur=30:2,eq=brightness=-0.12[bg];"
+        f"[0:v]scale={width}:-2[fg];"
+        f"[bg][fg]overlay=(W-w)/2:(H-h)/2[base]"
+    )
+
+    if reframe_mode == "blur" or (reframe_mode == "auto" and plan and plan.get("mode") == "none"):
+        chain = blur_chain
         if has_subs:
             chain += f";[base]{_subtitles_filter(ass_path)}[v]"
         else:
             chain += ";[base]null[v]"
         video_args = ["-filter_complex", chain, "-map", "[v]", "-map", "0:a?"]
     else:
-        chain = (
-            f"scale={width}:{height}:force_original_aspect_ratio=increase,"
-            f"crop={width}:{height},fps={fps}"
-        )
+        if reframe_mode == "auto" and plan:
+            chain = reframe_mod.crop_filter(plan, width, height, fps)
+        else:
+            chain = (
+                f"scale={width}:{height}:force_original_aspect_ratio=increase,"
+                f"crop={width}:{height},fps={fps}"
+            )
         if has_subs:
             chain += f",{_subtitles_filter(ass_path)}"
         video_args = ["-vf", chain, "-map", "0:v:0", "-map", "0:a?"]

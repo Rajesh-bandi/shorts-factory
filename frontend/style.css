@@ -817,3 +817,102 @@ html[data-motion="off"] *, html[data-motion="off"] *::before, html[data-motion="
   .manual-body { grid-template-columns: 1fr; }
   .caption-studio .cap-stage { width: 180px; height: 305px; }
 }
+
+/* ---------- signal pipeline strip ---------- */
+.pipeline-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: var(--gap); }
+.pipe-step { display: flex; align-items: center; gap: 9px; min-width: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--panel); }
+.pipe-step .pipe-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--line2); flex: none; transition: background .2s, box-shadow .2s; }
+.pipe-step.on .pipe-dot { background: var(--accent); box-shadow: 0 0 9px var(--accent); }
+.pipe-step > div { min-width: 0; }
+.pipe-step strong { display: block; font-size: 10.5px; }
+.pipe-step small { display: block; overflow: hidden; color: var(--faint); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.pipe-step em { margin-left: auto; color: var(--dim); font-family: var(--font-mono); font-size: 14px; font-style: normal; font-weight: 700; }
+.pipe-step.on em { color: var(--accent); }
+
+/* ---------- candidate signal badges ---------- */
+.cand-signals { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 5px 0; }
+.sig { display: inline-flex; align-items: center; padding: 1px 6px; border: 1px solid var(--line); border-radius: 99px; background: var(--bg); color: var(--faint); font-size: 8.5px; letter-spacing: .03em; }
+.sig-heat { border-color: color-mix(in srgb, var(--accent) 32%, var(--line)); color: var(--accent); }
+.sig-audio { border-color: color-mix(in srgb, var(--green) 32%, var(--line)); color: var(--green); }
+.sig-chat { border-color: color-mix(in srgb, #83a598 38%, var(--line)); color: #83a598; }
+.sig-speech { color: var(--dim); }
+.sig-ai { border-color: color-mix(in srgb, var(--accent2) 38%, var(--line)); color: var(--accent2); }
+
+/* ---------- mobile primary navigation ---------- */
+.mobile-nav { display: none; }
+body.auth-locked .mobile-nav { display: none !important; }
+
+@media (max-width: 720px) {
+  html { -webkit-text-size-adjust: 100%; }
+  .topbar { height: calc(56px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) 12px 0; gap: 8px; }
+  .crumbs { display: none; }
+  .viewport { padding: 18px 14px calc(94px + env(safe-area-inset-bottom)); }
+  .rail { padding-top: calc(20px + env(safe-area-inset-top)); }
+  .mobile-nav {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 32;
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px;
+    padding: 5px 4px calc(5px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--line);
+    background: color-mix(in srgb, var(--bg) 94%, transparent);
+    backdrop-filter: blur(18px) saturate(140%);
+  }
+  .mnav-item { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-height: 50px; padding: 4px 2px; border: 0; border-radius: 9px; background: transparent; color: var(--faint); font-size: 9px; letter-spacing: .04em; }
+  .mnav-item .ico { width: 20px; height: 20px; }
+  .mnav-item.active { background: color-mix(in srgb, var(--accent) 9%, transparent); color: var(--accent); }
+  .mnav-item .badge { position: absolute; top: 3px; right: calc(50% - 20px); }
+  .icon-btn { width: 42px; height: 42px; }
+  .topbar #btnHelp { display: none; }
+  .account-chip { max-width: none; padding-right: 0; border-color: transparent; background: transparent; }
+  .account-chip .icon-btn { width: 42px; height: 42px; }
+  .page-head h1 { font-size: 24px; }
+  .toolbar { gap: 8px; }
+  .toolbar .search-box { flex: 1 1 100%; }
+  .filters { width: 100%; flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+  .filters::-webkit-scrollbar { display: none; }
+  .filter { flex: none; min-height: 34px; }
+  input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):not([type="color"]),
+  select, textarea { min-height: 44px; font-size: 16px; }
+  .btn { min-height: 42px; }
+  .btn.sm { min-height: 36px; }
+  .row, .adv-grid, .settings-grid, .composer-opts { grid-template-columns: 1fr; }
+  .cand { grid-template-columns: 18px minmax(0, 1fr) 62px 62px; grid-template-areas: "pick body body body" "pick in out captions"; row-gap: 8px; }
+  .cand-pick { grid-area: pick; align-self: start; width: 18px; height: 18px; margin-top: 8px; }
+  .cand-body { grid-area: body; }
+  .cand-in { grid-area: in; }
+  .cand-out { grid-area: out; }
+  .cand-captions { grid-area: captions; justify-self: end; }
+  .cand .cand-preview, .cand .dur { display: none; }
+  .cand-title { font-size: 13px; }
+  .cand-reason { padding-top: 2px; line-height: 1.4; white-space: normal; }
+  .review-head { flex-direction: column; }
+  .review-actions select { flex: 1 1 45%; width: 100%; }
+  .review-actions .btn { width: 100%; }
+  .live-panel { margin: 10px 10px 4px; }
+  .live-head { flex-wrap: wrap; }
+  .live-phase { flex-basis: 100%; margin-left: 0; }
+  .live-spike { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; }
+  .live-spike .btn { grid-column: 1 / -1; width: 100%; }
+  .live-actions .btn { flex: 1 1 auto; }
+  .live-target { flex-basis: 100%; margin-left: 0; }
+  .job-title strong { font-size: 12px; }
+  .job-tools { gap: 2px; }
+  .pipeline-strip { grid-template-columns: 1fr 1fr; }
+  .pipe-step { padding: 9px 10px; }
+  .pipe-step small { white-space: normal; }
+  .save-bar { bottom: calc(72px + env(safe-area-inset-bottom)); }
+  #modalOverlay { align-items: flex-end; padding: 0; }
+  #modalOverlay .modal { display: flex; flex-direction: column; width: 100%; max-width: 100%; max-height: 92vh; border-radius: 16px 16px 0 0; }
+  #modalOverlay .modal-body { flex: 1; max-height: none; overflow: auto; padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
+  #modalOverlay .modal-foot { padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
+  .caption-studio .cap-stage { width: 160px; height: 284px; }
+  .history-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .history-body { padding: 9px; }
+  .manual-video-wrap video { max-height: 260px; }
+  .flow { grid-template-columns: 1fr; }
+  .flow-step { border-right: 0 !important; }
+}
+@media (max-width: 420px) {
+  .history-grid { grid-template-columns: 1fr; }
+  .stat-grid, .stat-grid.five { grid-template-columns: 1fr; }
+  .head-actions { flex-wrap: wrap; }
+}

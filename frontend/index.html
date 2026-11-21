@@ -9,7 +9,7 @@
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <script src="theme.js?v=20261115-13"></script>
 <script src="config.js?v=20261120-1"></script>
-    <link rel="stylesheet" href="style.css?v=20261119-4">
+    <link rel="stylesheet" href="style.css?v=20261121-1">
     <link rel="stylesheet" href="aesthetic.css?v=20261115-3">
     <link rel="stylesheet" href="vice.css?v=20261115-19">
 </head>
@@ -151,6 +151,13 @@
           <div class="cs-main"><span class="skeleton sk-line w40"></span><span class="skeleton sk-line w70"></span></div>
         </div>
 
+        <div class="pipeline-strip" id="pipelineStrip" aria-label="Pipeline status">
+          <div class="pipe-step" data-pipe="scan"><span class="pipe-dot"></span><div><strong>Signals</strong><small>heatmap · audio · chat</small></div><em id="pipeScan">0</em></div>
+          <div class="pipe-step" data-pipe="review"><span class="pipe-dot"></span><div><strong>AI picks</strong><small>ready to review</small></div><em id="pipeReview">0</em></div>
+          <div class="pipe-step" data-pipe="render"><span class="pipe-dot"></span><div><strong>Rendering</strong><small>9:16 + captions</small></div><em id="pipeRender">0</em></div>
+          <div class="pipe-step" data-pipe="done"><span class="pipe-dot"></span><div><strong>Done</strong><small>clips in history</small></div><em id="pipeDone">0</em></div>
+        </div>
+
         <div class="stat-grid">
           <div class="stat-card spot">
             <div class="stat-top"><span class="stat-ico" data-icon="users"></span><span class="stat-label">subscribers</span></div>
@@ -278,7 +285,7 @@
               <div class="adv-grid">
                 <div class="field"><label for="createPrivacy">Privacy</label><select id="createPrivacy"><option value="public">Public</option><option value="unlisted">Unlisted</option><option value="private">Private</option></select></div>
                 <div class="field" id="durationField"><label for="createDuration">Clip length</label><select id="createDuration"><option value="30">30 seconds</option><option value="45" selected>45 seconds</option><option value="60">60 seconds</option><option value="90">90 seconds</option></select></div>
-                <div class="field"><label for="createReframe">Reframe</label><select id="createReframe"><option value="crop">Center crop</option><option value="blur">Blurred backdrop</option></select></div>
+                <div class="field"><label for="createReframe">Reframe</label><select id="createReframe"><option value="auto" selected>Auto (face-aware)</option><option value="crop">Center crop</option><option value="blur">Blurred backdrop</option></select></div>
                 <div class="field field-switch" id="autoUploadField">
                   <label class="switch"><input type="checkbox" id="createAutoUpload"><span class="sw"></span><span>Auto-upload after render</span></label>
                   <p class="hint">Normal AI clips only — batch and manual cuts always stay local. The AI writes each title, description and tags before uploading to your connected channel.</p>
@@ -608,7 +615,7 @@
             <div class="card">
               <div class="card-head"><div><div class="eyebrow">render</div><h3>Output</h3></div></div>
               <div class="row">
-                <div class="field"><label for="reframe">Reframe</label><select id="reframe"><option value="crop">Center crop</option><option value="blur">Blurred backdrop</option></select></div>
+                <div class="field"><label for="reframe">Reframe</label><select id="reframe"><option value="auto">Auto (face-aware)</option><option value="crop">Center crop</option><option value="blur">Blurred backdrop</option></select></div>
                 <div class="field"><label for="resolution">Resolution</label><select id="resolution"><option value="1080">1080 × 1920</option><option value="720">720 × 1280</option></select></div>
               </div>
               <div class="field"><label for="quality">Quality</label><select id="quality"><option value="high">High (CRF 18)</option><option value="balanced">Balanced (CRF 21)</option><option value="small">Small file (CRF 25)</option></select></div>
@@ -640,6 +647,14 @@
     </div>
   </main>
 </div>
+
+<nav class="mobile-nav" id="mobileNav" aria-label="Primary mobile">
+  <button class="mnav-item" data-go="dashboard" aria-label="Dashboard"><span data-icon="dashboard"></span><span>Home</span></button>
+  <button class="mnav-item" data-go="create" aria-label="Create"><span data-icon="create"></span><span>Create</span></button>
+  <button class="mnav-item mnav-jobs" data-go="jobs" aria-label="Jobs"><span data-icon="layers"></span><span>Jobs</span><em class="badge" id="mobileBadge"></em></button>
+  <button class="mnav-item" data-go="history" aria-label="History"><span data-icon="film"></span><span>Library</span></button>
+  <button class="mnav-item" data-go="settings" aria-label="Settings"><span data-icon="sliders"></span><span>Settings</span></button>
+</nav>
 
 <!-- ============ APPEARANCE ============ -->
 <aside class="tweaks" id="tweaks" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="twTitle">
@@ -711,6 +726,6 @@
 <div class="toasts" id="toasts" aria-live="polite" aria-relevant="additions" aria-atomic="false"></div>
 <canvas id="confetti" aria-hidden="true"></canvas>
 
-<script type="module" src="app.js?v=20261119-2"></script>
+<script type="module" src="app.js?v=20261121-1"></script>
 </body>
 </html>

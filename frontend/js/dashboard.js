@@ -38,6 +38,7 @@ function renderDashboard() {
   $("#stVideosFoot").textContent = ch ? "published" : "connect a channel";
   $("#stUploadsFoot").textContent = "clips rendered";
   renderChannelStrip(ch);
+  renderPipelineStrip();
   const snaps = (d.snapshots || []).map((s) => ({ ts: s.ts, value: s.subs }));
   drawChart("#dashChart", "#dashChartWrap", "#dashTip", snaps, fmt);
   $("#sparkNote").textContent = snaps.length > 1
@@ -57,6 +58,21 @@ function renderChannelStrip(ch) {
       <div class="cs-main"><div class="cs-title">YouTube not connected <span class="pill muted">local mode</span></div><div class="cs-sub">Rendering works offline. Connect a channel for auto-upload, stats and the growth advisor.</div></div>
       <div class="cs-actions"><button class="btn primary sm" data-go="settings" data-tab-target="channel">${icon("youtube")}Connect channel</button></div>`;
   }
+}
+function renderPipelineStrip() {
+  const jobs = state.jobs || [];
+  const renderStages = new Set(["clipping", "uploading"]);
+  const scanning = jobs.filter((j) => ["queued", "running"].includes(j.status) && !renderStages.has(j.stage)).length;
+  const review = jobs.filter((j) => j.status === "review").length;
+  const rendering = jobs.filter((j) => j.status === "running" && renderStages.has(j.stage)).length;
+  const done = jobs.filter((j) => j.status === "done").length;
+  const counts = { scan: scanning, review, render: rendering, done };
+  Object.entries(counts).forEach(([key, value]) => {
+    const valueEl = document.getElementById(`pipe${key[0].toUpperCase()}${key.slice(1)}`);
+    if (valueEl) valueEl.textContent = String(value);
+    const step = document.querySelector(`[data-pipe="${key}"]`);
+    if (step) step.classList.toggle("on", value > 0);
+  });
 }
 function renderAdvice(el, adv) {
   if (!el) return;
@@ -158,4 +174,4 @@ function drawChart(svgSel, wrapSel, tipSel, points, format = fmt) {
   }
 }
 
-export { loadDashboard, setStat, renderDashboard, renderChannelStrip, renderAdvice, renderRecentJobs, drawChart };
+export { loadDashboard, setStat, renderDashboard, renderChannelStrip, renderPipelineStrip, renderAdvice, renderRecentJobs, drawChart };

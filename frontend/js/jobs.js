@@ -3,7 +3,7 @@ import { icon } from "./icons.js";
 import { toast, showModal, confirmDialog, confetti } from "./ui.js";
 import { go } from "./router.js";
 import { renderManualPanel } from "./create.js";
-import { renderRecentJobs } from "./dashboard.js";
+import { renderRecentJobs, renderPipelineStrip } from "./dashboard.js";
 import { openHistoryClip, openUploadModal, openCaptionEditor, loadHistory } from "./history.js";
 
 const actBtn = (act, id, title, ico) => `<button class="icon-btn" data-act="${act}" data-id="${id}" title="${title}" aria-label="${title}">${icon(ico)}</button>`;
@@ -35,10 +35,11 @@ function renderJobs(force = false) {
 function updateRail() {
   const active = state.jobs.filter((j) => ["queued", "running"].includes(j.status)).length;
   const review = state.jobs.filter((j) => j.status === "review").length;
-  const a = $("#railActive"), r = $("#railReview"), b = $("#navBadge");
+  const a = $("#railActive"), r = $("#railReview"), b = $("#navBadge"), mb = $("#mobileBadge");
   if (a) a.textContent = `${active} active`;
   if (r) r.textContent = `${review} review`;
   if (b) { b.textContent = review || ""; b.style.display = review ? "inline-block" : "none"; }
+  if (mb) { mb.textContent = review || ""; mb.style.display = review ? "inline-block" : "none"; }
 }
 function emptyJobs() {
   return `<div class="empty"><span class="empty-icon">${icon("layers")}</span><strong>No jobs here yet</strong><p>Paste a YouTube link and the pipeline will fill this up.</p><button class="btn primary sm" data-go="create">${icon("plus")}New short</button></div>`;
@@ -166,12 +167,26 @@ function ensureEdits(j) {
   }
   return false;
 }
+function signalBadges(c) {
+  const s = c.signals || {};
+  const bits = [];
+  const heat = Number(s.heat || 0);
+  const energy = Number(s.energy || 0);
+  const chat = Number(s.chat || 0);
+  const speech = Number(s.speech || 0);
+  if (heat > 0.02) bits.push(`<span class="sig sig-heat" title="YouTube most-replayed signal">heat ${Math.round(heat * 100)}%</span>`);
+  if (energy >= 1.15) bits.push(`<span class="sig sig-audio" title="Audio energy compared with this video's baseline">audio ${energy.toFixed(1)}×</span>`);
+  if (chat > 0) bits.push(`<span class="sig sig-chat" title="Chat messages inside this window">chat ${Math.round(chat)}</span>`);
+  if (speech > 0) bits.push(`<span class="sig sig-speech" title="Share of the window that contains speech">speech ${Math.round(speech * 100)}%</span>`);
+  if ((c.sources || []).includes("ai")) bits.push(`<span class="sig sig-ai">AI</span>`);
+  return bits.length ? `<div class="cand-signals">${bits.join("")}</div>` : "";
+}
 function reviewSection(j) {
   ensureEdits(j);
   const privacy = jobOpt(j, "privacy", "public");
   const caption = jobOpt(j, "caption_preset", "gruvbox");
   const animation = jobOpt(j, "caption_animation", "static");
-  const reframe = jobOpt(j, "reframe", "crop");
+  const reframe = jobOpt(j, "reframe", "auto");
   const rows = j.candidates.map((c, i) => {
     const ed = state.edit[j.id][i];
     const dur = editDuration(ed);
@@ -180,12 +195,13 @@ function reviewSection(j) {
       <div class="cand-body">
         <input class="cand-title" data-field="title" value="${esc(ed.title)}" aria-label="Clip title">
         <div class="cand-reason">${esc(c.reason || "Highlight")}</div>
+        ${signalBadges(c)}
       </div>
-      <div class="time-field"><label>in</label><input type="number" step="0.1" min="0" data-field="start" value="${Number(ed.start).toFixed(1)}"></div>
-      <div class="time-field"><label>out</label><input type="number" step="0.1" min="0" data-field="end" value="${Number(ed.end).toFixed(1)}"></div>
+      <div class="time-field cand-in"><label>in</label><input type="number" step="0.1" min="0" data-field="start" value="${Number(ed.start).toFixed(1)}"></div>
+      <div class="time-field cand-out"><label>out</label><input type="number" step="0.1" min="0" data-field="end" value="${Number(ed.end).toFixed(1)}"></div>
       <span class="dur">${Math.round(dur)}s</span>
       <button class="icon-btn cand-preview" data-act="preview" data-id="${j.id}" data-idx="${i}" title="Preview source at this moment" aria-label="Preview source at this moment">${icon("play")}</button>
-      <button class="icon-btn" data-act="captions" data-id="${j.id}" data-idx="${i}" title="Edit captions" aria-label="Edit captions">${icon("terminal")}</button>
+      <button class="icon-btn cand-captions" data-act="captions" data-id="${j.id}" data-idx="${i}" title="Edit captions" aria-label="Edit captions">${icon("terminal")}</button>
     </div>`;
   }).join("");
   return `<div class="review">
@@ -197,7 +213,7 @@ function reviewSection(j) {
       <select data-job-opt="privacy" aria-label="Privacy">${optionsHtml([["public", "Public"], ["unlisted", "Unlisted"], ["private", "Private"]], privacy)}</select>
       <select data-job-opt="caption" aria-label="Caption style">${optionsHtml([["gruvbox", "Gruvbox captions"], ["omarchy", "Omarchy green"], ["classic", "Classic"], ["boxed", "Boxed"], ["clean", "Clean"], ["neon", "Neon"]], caption)}</select>
       <select data-job-opt="animation" aria-label="Caption animation">${optionsHtml([["static", "Static captions"], ["word", "Word highlight"], ["pop", "Pop-in captions"]], animation)}</select>
-      <select data-job-opt="reframe" aria-label="Reframe">${optionsHtml([["crop", "Center crop"], ["blur", "Blur backdrop"]], reframe)}</select>
+      <select data-job-opt="reframe" aria-label="Reframe">${optionsHtml([["auto", "Auto reframe"], ["crop", "Center crop"], ["blur", "Blur backdrop"]], reframe)}</select>
       <button class="btn primary sm" data-act="render" data-id="${j.id}">${icon("scissors")}Render selected</button>
     </div>
   </div>`;
@@ -274,7 +290,7 @@ async function pollJobs(force = false) {
     state.jobs = jobs;
     renderJobs(force);
     if (state.createMode === "manual") renderManualPanel();
-    if (state.view === "dashboard") renderRecentJobs();
+    if (state.view === "dashboard") { renderRecentJobs(); renderPipelineStrip(); }
     if (state.view === "history" && finished) loadHistory();
     const open = jobs.filter((j) => state.jobOpen[j.id]);
     await Promise.all(open.slice(0, 6).map(pullLogs));

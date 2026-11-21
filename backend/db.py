@@ -20,6 +20,7 @@ from .models import (
     User,
     UserSession,
     UserToken,
+    VideoCache,
     VideoStat,
 )
 
@@ -705,3 +706,59 @@ def list_channel_snapshots(user_id):
     with _read() as s:
         rows = s.scalars(select(ChannelSnapshot).where(ChannelSnapshot.user_id == int(user_id)).order_by(ChannelSnapshot.ts)).all()
         return _rows(rows)
+
+
+# ---------------- public video analysis cache ----------------
+_VIDEO_CACHE_FIELDS = ("title", "duration", "heatmap", "energy", "transcript")
+
+
+def get_video_cache(video_id):
+    """Return cached public analysis for a YouTube video, if present."""
+    video_id = str(video_id or "").strip()[:40]
+    if not video_id:
+        return None
+    with _read() as s:
+        row = s.get(VideoCache, video_id)
+        if not row:
+            return None
+        data = _row(row)
+        for key, fallback in (("heatmap", []), ("energy", []), ("transcript", [])):
+            data[key] = _json(data.get(key), fallback)
+        return data
+
+
+def save_video_cache(video_id, **fields):
+    """Upsert transcript / heatmap / energy for one public video id."""
+    video_id = str(video_id or "").strip()[:40]
+    if not video_id:
+        return None
+    now = time.time()
+    with _read() as s:
+        row = s.get(VideoCache, video_id)
+        if row is None:
+            row = VideoCache(video_id=video_id, updated_at=now)
+            s.add(row)
+        for key in _VIDEO_CACHE_FIELDS:
+            if key not in fields or fields[key] is None:
+                continue
+            value = fields[key]
+            if key in ("heatmap", "energy", "transcript"):
+                value = json.dumps(value, ensure_ascii=False)
+            setattr(row, key, value)
+        row.updated_at = now
+        s.commit()
+        return video_id
+
+
+def clear_video_cache(video_id):
+    video_id = str(video_id or "").strip()[:40]
+    if not video_id:
+        return False
+    with _read() as s:
+        row = s.get(VideoCache, video_id)
+        if row is None:
+            return False
+        s.delete(row)
+        s.commit()
+        return True
+

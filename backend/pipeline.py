@@ -9,7 +9,7 @@ import os
 import threading
 import time
 
-from . import assistant, chat, clipper, db, downloader, highlights, qa, settings as s, storage, transcribe, uploader
+from . import assistant, chat, clipper, db, downloader, highlights, qa, settings as s, signals, storage, transcribe, uploader
 
 _analyze_lock = threading.Lock()
 _events_lock = threading.Lock()
@@ -104,7 +104,7 @@ def _options(user_id, job=None, extra=None):
         "clip_duration": int(s.get(user_id, "short_length", 45) or 45),
         "chat_highlights": _as_bool(s.get(user_id, "chat_highlights", True), True),
         "gpu_enabled": _as_bool(s.get(user_id, "gpu_enabled", True), True),
-        "reframe": s.get(user_id, "reframe", "crop") or "crop",
+        "reframe": s.get(user_id, "reframe", "auto") or "auto",
         "resolution": str(s.get(user_id, "resolution", "1080") or "1080"),
         "quality": s.get(user_id, "quality", "balanced") or "balanced",
         "tags": s.get(user_id, "upload_tags", "shorts, clips") or "shorts, clips",
@@ -125,8 +125,8 @@ def _options(user_id, job=None, extra=None):
         opts["privacy"] = "private"
     if str(opts.get("resolution")) not in ("1080", "720"):
         opts["resolution"] = "1080"
-    if opts.get("reframe") not in ("crop", "blur"):
-        opts["reframe"] = "crop"
+    if opts.get("reframe") not in ("auto", "crop", "blur"):
+        opts["reframe"] = "auto"
     opts["chat_highlights"] = _as_bool(opts.get("chat_highlights"), True)
     if opts.get("caption_animation") not in ("static", "word", "pop"):
         opts["caption_animation"] = "static"
@@ -184,16 +184,6 @@ def _clock_label(seconds):
     hours, rest = divmod(total, 3600)
     minutes, secs = divmod(rest, 60)
     return f"{hours}:{minutes:02d}:{secs:02d}" if hours else f"{minutes}:{secs:02d}"
-
-
-def _candidate_overlap(a, b):
-    try:
-        return max(
-            0.0,
-            min(float(a["end"]), float(b["end"])) - max(float(a["start"]), float(b["start"])),
-        )
-    except (KeyError, TypeError, ValueError):
-        return 0.0
 
 
 def _live_session(job_id):
@@ -369,6 +359,9 @@ def run_analyze(job_id):
             chat_capture = None
             chat_shift = 0.0
             chat_enabled = _as_bool(merged.get("chat_highlights"), True)
+            video_id = ""
+            heatmap = []
+            energy = []
 
             if source:
                 reuse_live = "_live." in os.path.basename(source).lower()
@@ -578,6 +571,12 @@ def run_analyze(job_id):
                         cancel_cb=ev.is_set, info=raw_info, try_online=False,
                     )
                     analysis_media = source
+                    try:
+                        energy = signals.audio_energy(source, cancel_cb=ev.is_set)
+                        if energy:
+                            db.log(job_id, f"Live audio energy ready ({len(energy)}s) — ranking the spike cuts")
+                    except Exception as e:
+                        db.log(job_id, f"Live audio energy scan skipped: {e}", "warn")
                     cands = []
                     for spike_index, pick in enumerate(picks):
                         _check(ev)
@@ -589,6 +588,7 @@ def run_analyze(job_id):
                             ai_cands = highlights.pick_llm_window(
                                 info["title"], segments, 1, job_id, user_id,
                                 target_length, left, right, peak=peak,
+                                energy=energy, chat_events=chat_events,
                             )
                         cand = ai_cands[0] if ai_cands else None
                         if not cand:
@@ -597,6 +597,12 @@ def run_analyze(job_id):
                                 target_length, pad, segments,
                             )
                             if cand:
+                                start, end = signals.snap_window(
+                                    segments, cand["start"], cand["end"], target_length,
+                                    peak=peak, duration=info["duration"],
+                                )
+                                cand["start"] = max(left, start)
+                                cand["end"] = min(right, end)
                                 db.log(
                                     job_id,
                                     f"AI pick unavailable for the spike at {_clock_label(peak)} — "
@@ -611,13 +617,8 @@ def run_analyze(job_id):
                             cand["transcript"] = chat.window_transcript(
                                 segments, cand["start"], cand["end"]
                             )
-                        if any(
-                            _candidate_overlap(cand, other) > 0.5 * min(
-                                float(cand["end"]) - float(cand["start"]),
-                                float(other["end"]) - float(other["start"]),
-                            )
-                            for other in cands
-                        ):
+                        signals.attach_signals(cand, segments, energy, None, chat_events)
+                        if any(signals.iou(cand, other) > 0.5 for other in cands):
                             db.log(
                                 job_id,
                                 f"Skipped the clip for {_clock_label(peak)} because it overlaps "
@@ -649,11 +650,51 @@ def run_analyze(job_id):
                         "duration": duration,
                         "channel": raw_info.get("uploader") or raw_info.get("channel") or "",
                     }
+                    video_id = str(raw_info.get("id") or "")
+                    cached = db.get_video_cache(video_id) if video_id else None
+                    heatmap = (cached or {}).get("heatmap") or []
+                    energy = (cached or {}).get("energy") or []
+                    if heatmap:
+                        db.log(job_id, "Reusing cached YouTube most-replayed heatmap")
+                    else:
+                        heatmap = signals.heatmap_series(raw_info, duration)
+                        if heatmap and video_id:
+                            db.save_video_cache(video_id, heatmap=heatmap)
+                        if heatmap:
+                            db.log(job_id, "YouTube most-replayed heatmap ready")
                     db.update_job(job_id, title=info["title"], stage="downloading", progress=0.16)
                     _check(ev)
-                    segments, label = transcribe.fetch_online(
-                        job_id, job["url"], user_id, info=raw_info, cancel_cb=ev.is_set
-                    )
+
+                    # Past live streams often expose a full chat replay. It is
+                    # the strongest free signal for stream highlights, so fetch
+                    # it before spending time on transcript heuristics.
+                    if (
+                        chat_enabled and video_id
+                        and (raw_info.get("was_live") or live_status in ("was_live", "post_live"))
+                    ):
+                        db.log(job_id, "Downloading YouTube chat replay for this past live stream…")
+                        try:
+                            chat_events = chat.fetch_replay(
+                                job["url"], video_id, job_id, user_id, duration,
+                                cancel_cb=ev.is_set,
+                            )
+                        except JobCanceled:
+                            raise
+                        except Exception as e:
+                            db.log(job_id, f"Chat replay unavailable: {e}", "warn")
+                        if chat_events:
+                            db.log(job_id, f"Chat replay ready — {len(chat_events)} messages")
+
+                    segments = (cached or {}).get("transcript") or []
+                    if segments:
+                        db.log(job_id, f"Reusing cached transcript ({len(segments)} segments) for this video")
+                        db.update_job(job_id, stage="transcribing", progress=0.46)
+                    else:
+                        segments, label = transcribe.fetch_online(
+                            job_id, job["url"], user_id, info=raw_info, cancel_cb=ev.is_set
+                        )
+                        if segments and video_id:
+                            db.save_video_cache(video_id, transcript=segments)
                     _check(ev)
                     if segments:
                         db.log(job_id, f"Timed transcript ready ({len(segments)} segments) — video still not downloaded")
@@ -667,14 +708,42 @@ def run_analyze(job_id):
                                 audio, job_id, user_id, cb, None, cancel_cb=ev.is_set,
                                 try_online=False,
                             )
+                            if segments and video_id:
+                                db.save_video_cache(video_id, transcript=segments)
                         except JobCanceled:
                             raise
                         except Exception as e:
                             db.log(job_id, f"Audio-only analysis failed: {e}", "warn")
                             segments = None
 
+                    # Audio energy is cheap and gives the LLM a loudness
+                    # signal even when captions were available. The audio file
+                    # is also the fallback Whisper source, so reuse it.
+                    if not energy and video_id:
+                        try:
+                            audio_path = analysis_media
+                            if not audio_path:
+                                audio_path = downloader.download_audio(
+                                    job["url"], job_id, user_id, cancel_cb=ev.is_set
+                                )
+                                analysis_media = analysis_media or audio_path
+                            energy = signals.audio_energy(audio_path, cancel_cb=ev.is_set)
+                            if energy:
+                                db.save_video_cache(video_id, energy=energy)
+                                db.log(job_id, f"Audio energy ready ({len(energy)}s) — peaks can guide the AI")
+                        except JobCanceled:
+                            raise
+                        except Exception as e:
+                            db.log(job_id, f"Audio energy scan skipped: {e}", "warn")
+
+
             _check(ev)
             if not interactive_live:
+                if source and not energy:
+                    try:
+                        energy = signals.audio_energy(source, cancel_cb=ev.is_set)
+                    except Exception as e:
+                        db.log(job_id, f"Audio energy scan skipped: {e}", "warn")
                 db.update_job(job_id, stage="analyzing", progress=0.66)
                 target_length = int(merged.get("clip_duration") or 45)
                 wanted = max(1, int(job["short_count"]))
@@ -684,6 +753,8 @@ def run_analyze(job_id):
                         chat_events, info["duration"], wanted, target_length, segments
                     )
                 if chat_cands:
+                    for item in chat_cands:
+                        signals.attach_signals(item, segments, energy, heatmap, chat_events)
                     label = "clip" if len(chat_cands) == 1 else "clips"
                     db.log(job_id, f"Chat heatmap found {len(chat_cands)} spike {label}")
                 elif chat_events:
@@ -704,8 +775,13 @@ def run_analyze(job_id):
                     normal_cands = highlights.pick_highlights(
                         analysis_media, info["title"], info["duration"], segments,
                         wanted, job_id, user_id, target_length,
+                        energy=energy, heatmap=heatmap, chat_events=chat_events,
                     )
                     cands = chat.merge_candidates(chat_cands, normal_cands, wanted) if chat_cands else normal_cands
+                for item in cands:
+                    signals.attach_signals(item, segments, energy, heatmap, chat_events)
+                if energy or heatmap or chat_events:
+                    db.log(job_id, f"Signal fusion: {signals.signal_summary(heatmap, energy, chat_events)}")
                 _check(ev)
 
         if not cands:
@@ -719,8 +795,14 @@ def run_analyze(job_id):
             "title": info["title"],
             "channel": info.get("channel") or "",
             "url": job["url"],
+            "video_id": video_id,
             "analysis": "live" if (live_capture or reuse_live) else ("captions" if (segments and not analysis_media) else "media"),
             "chat_messages": len(chat_events),
+            "signals": {
+                "heatmap": bool(heatmap),
+                "energy_seconds": len(energy),
+                "chat_messages": len(chat_events),
+            },
         })
         if auto_render_indices:
             db.update_job(

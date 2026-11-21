@@ -131,14 +131,19 @@ GitHub Actions for both platforms and publishes the installers and
 ## Features
 
 - Transcript-first analysis without downloading the full video.
+- Signal fusion: YouTube heatmap, audio energy, chat spikes and speech coverage
+  guide the AI ranking, with word-edge snapping and overlap dedupe.
 - AI moment selection, or local transcript/audio heuristics without an API key.
 - Review candidates before rendering: trim, rename, cut sequences
-  titles, per-word caption editing.
+  titles, per-word caption editing, and per-candidate signal badges.
 - Section-only downloads, cached retries, CPU/GPU rendering, automated QA.
+- Auto reframe: face-aware static 9:16 crop with centre/blur fallbacks.
 - Live-stream support: records a configurable segment, then finds and renders
   clips from that recording.
 - Durable queued jobs with ETA, queue position and live activity logs.
 - History, batch/series mode, analytics, growth advisor and CSV export.
+- Mobile shell with a bottom navigation bar, safe-area support and larger
+  touch targets.
 - Optional YouTube connect/upload with AI-written metadata, including automatic
   upload after normal AI-clip renders (never batch jobs).
 - Vice 6 appearance: sunset and daytime themes, configurable cursor, sound,
@@ -177,9 +182,10 @@ retention/watch-time metrics.
 
 ## Pipeline
 
-1. Read metadata and English captions without downloading video.
-   For an active live stream, recording starts immediately so no spike is
-   missed. Chat surges are published to the job card as they are detected;
+1. Read metadata, English captions and YouTube's public "most replayed"
+   heatmap without downloading video. Past live streams also get their chat
+   replay. For an active live stream, recording starts immediately so no spike
+   is missed. Chat surges are published to the job card as they are detected;
    pick one with **Proceed**, or **Next spike** to keep watching. The app
    records `LIVE_SPIKE_PAD_SECONDS` after the last chosen surge (live cannot
    be rewound), then transcribes the recording and lets AI cut one clip inside
@@ -187,16 +193,26 @@ retention/watch-time metrics.
    `LIVE_MAX_CAPTURE_SECONDS`; if no pick arrives within
    `LIVE_PICK_TIMEOUT_SECONDS`, the strongest spike is auto-selected. No chat
    or no spike fails the job with a clear error.
-2. AI selects moments from the timed transcript. Long videos are map-reduced in
-   overlapping windows so the end of a two-hour video is not dropped. Without
-   AI, a transcript heuristic is used.
+2. Build cheap evidence: the heatmap series, per-second audio energy and chat
+   spikes. AI ranks the transcript in overlapping windows while seeing those
+   hotspots as supporting evidence, then boundaries are snapped to word and
+   sentence edges. Long videos are map-reduced so the end of a two-hour video
+   is not dropped. Without AI, the same signals rank the candidates locally.
 3. Review candidates before any media download: trim in/out, rename, or edit
-   the exact caption lines.
-4. Download only selected sections, then crop/reframe to 1080×1920 and burn
-   captions. A full-source download is a fallback only when section extraction
-   fails; cached sections are reused on retry/re-render.
+   the exact caption lines. Each candidate shows its heat, audio, chat and
+   speech badges.
+4. Download only selected sections, then reframe to 1080×1920 and burn
+   captions. Auto reframe uses a face-aware static crop and falls back to the
+   centre (or blurred backdrop for vertical sources). A full-source download
+   is a fallback only when section extraction fails; cached sections are
+   reused on retry/re-render.
 5. Automated QA checks duration, 9:16 aspect, audio presence, loudness and
    clipping. Failed QA blocks upload unless explicitly forced.
+
+Public analysis is cached by YouTube video id: transcript, heatmap and audio
+energy are shared across users, so a second job on the same video skips the
+expensive work. Chat replay is cached under `data/cache/chat`. These caches
+contain public video data only — never cookies or credentials.
 
 Normal AI-clip runs can optionally auto-upload their rendered Shorts with AI
 metadata; batch, series and manual cuts always stay local. Every render is in

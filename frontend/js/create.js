@@ -12,7 +12,7 @@ function populateCreateDefaults() {
   const set = (sel, val) => { const el = $(sel); if (el && val !== undefined && val !== null && val !== "") el.value = String(val); };
   set("#createPrivacy", s.default_privacy || "public");
   set("#createDuration", s.clip_duration || s.short_length || 45);
-  set("#createReframe", s.reframe || "crop");
+  set("#createReframe", s.reframe || "auto");
   const preset = CAPTION_STYLES[s.caption_preset] ? s.caption_preset : "gruvbox";
   set("#caption_preset", preset);
   set("#caption_size", s.caption_size || CAPTION_STYLES[preset].size);

@@ -8,13 +8,15 @@ comments have no video-time coordinate.
 import glob
 import json
 import os
+import re
+import shutil
 import statistics
 import subprocess
 import threading
 import time
 from bisect import bisect_left, bisect_right
 
-from . import downloader
+from . import config, downloader
 
 CHAT_SUFFIX = ".live_chat.json"
 _ITEM_KEYS = (
@@ -241,6 +243,65 @@ def read_events(job_id, user_id, duration, shift=0.0, start_epoch=None):
         return []
     path = max(existing, key=os.path.getsize)
     return _parse_file(path, duration, shift=shift, start_epoch=start_epoch)
+
+
+def replay_cache_path(video_id):
+    safe = re.sub(r"[^\w.-]", "_", str(video_id or "").strip())[:80]
+    return os.path.join(str(config.DATA_DIR), "cache", "chat", f"{safe}.live_chat.json")
+
+
+def fetch_replay(url, video_id, job_id, user_id, duration, cancel_cb=None, timeout=240):
+    """Download YouTube's chat replay for a finished live VOD.
+
+    Chat replay is the strongest free signal for past streams. It is cached by
+    video id under ``data/cache/chat`` so a second user (or a retry) never
+    downloads the same replay twice. Failures are non-fatal: the pipeline keeps
+    the transcript and heatmap signals.
+    """
+    video_id = str(video_id or "").strip()
+    if not video_id:
+        return []
+    cache = replay_cache_path(video_id)
+    try:
+        if os.path.isfile(cache) and os.path.getsize(cache) > 0:
+            events = _parse_file(cache, duration)
+            if events:
+                return events
+    except OSError:
+        pass
+
+    os.makedirs(os.path.dirname(cache), exist_ok=True)
+    prefix = os.path.join(
+        downloader.user_media_dir(user_id), f"job{job_id}_chat_replay"
+    )
+    try:
+        downloader._run_ytdlp(_command(url, prefix), cancel_cb=cancel_cb, timeout=timeout)
+    except Exception:
+        if cancel_cb and cancel_cb():
+            raise
+        return []
+
+    files = [
+        path for path in glob.glob(prefix + "*")
+        if os.path.isfile(path) and os.path.getsize(path) > 0 and "live_chat" in path
+    ]
+    if not files:
+        return []
+    source = max(files, key=os.path.getsize)
+    try:
+        shutil.copyfile(source, cache)
+    except OSError:
+        pass
+    try:
+        return _parse_file(source, duration)
+    finally:
+        # The shared cache is the durable copy; do not keep a duplicate in the
+        # user's media directory where retention jobs would have to prune it.
+        for path in files:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
 
 
 class LiveChatCapture:

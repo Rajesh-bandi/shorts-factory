@@ -33,6 +33,12 @@ function go(view, push = true) {
     if (active) n.setAttribute("aria-current", "page");
     else n.removeAttribute("aria-current");
   });
+  $$(".mnav-item").forEach((n) => {
+    const active = n.dataset.go === view;
+    n.classList.toggle("active", active);
+    if (active) n.setAttribute("aria-current", "page");
+    else n.removeAttribute("aria-current");
+  });
   $("#crumbView").textContent = view;
   document.title = `${view[0].toUpperCase() + view.slice(1)} · ${prefs.palette === "vice" ? "Vice 6 · Shorts Factory" : "Shorts Factory"}`;
   if (push) history.replaceState(null, "", `#${view}`);

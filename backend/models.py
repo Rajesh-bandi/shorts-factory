@@ -162,6 +162,24 @@ class UserToken(Base):
     updated_at: Mapped[float] = mapped_column(Float, nullable=False)
 
 
+class VideoCache(Base):
+    """Public, user-independent analysis cache keyed by YouTube video id.
+
+    Transcripts, the most-replayed series and audio energy are expensive to
+    rebuild but identical for every user, so they live outside the user scope.
+    Only public video metadata is stored here — never cookies or credentials.
+    """
+
+    __tablename__ = "video_cache"
+    video_id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    title: Mapped[str] = mapped_column(Text, default="")
+    duration: Mapped[float] = mapped_column(Float, default=0.0)
+    heatmap: Mapped[str] = mapped_column(Text, default="[]")
+    energy: Mapped[str] = mapped_column(Text, default="[]")
+    transcript: Mapped[str] = mapped_column(Text, default="[]")
+    updated_at: Mapped[float] = mapped_column(Float, nullable=False, index=True)
+
+
 Index("ix_jobs_user_status", Job.user_id, Job.status)
 Index("ix_clips_user_uploaded", Clip.user_id, Clip.uploaded)
 Index("ix_video_stats_user_fetched", VideoStat.user_id, VideoStat.fetched_at)

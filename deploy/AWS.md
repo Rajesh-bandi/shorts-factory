@@ -493,6 +493,16 @@ the UI, or add an off-peak cleanup cron on the host:
 This leaves database rows in place; the UI already tolerates missing preview
 files. Do not run it while a long live capture is active.
 
+The public analysis cache (`video_cache` table) and chat replay files under
+`/opt/shorts/data/cache/chat` are safe to prune independently:
+
+```cron
+30 4 * * * find /opt/shorts/data/cache/chat -type f -mtime +30 -delete
+```
+
+Pruning only means the next job on that video rebuilds the transcript, heatmap
+or chat replay. It never removes rendered clips.
+
 ### Backups
 
 - Enable EBS Data Lifecycle Manager: daily snapshot of the root volume,
