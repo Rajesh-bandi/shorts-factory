@@ -520,23 +520,25 @@ def run_analyze(job_id):
                         )
                     if not spikes:
                         spikes = list(picks)
+                    wait_seconds = downloader.live_pick_timeout_seconds()
+                    deadline = time.time() + wait_seconds
                     _update_live_options(
                         job_id,
                         live_spikes=spikes,
                         live_phase="picking",
                         live_recording_duration=round(info["duration"], 1),
+                        live_pick_timeout=wait_seconds,
+                        live_pick_deadline=round(deadline, 1),
                     )
                     picks, decided = _live_pick_state(job_id)
                     if not (decided and picks):
                         db.update_job(job_id, stage="live_pick", progress=0.30)
-                        wait_seconds = downloader.live_pick_timeout_seconds()
                         db.log(
                             job_id,
                             f"Recording ready ({info['duration'] / 60:.1f} min). Choose a spike to "
                             f"continue; the strongest spike is auto-selected in "
                             f"{max(1, wait_seconds // 60)} min.",
                         )
-                        deadline = time.time() + wait_seconds
                         while time.time() < deadline:
                             _check(ev)
                             picks, decided = _live_pick_state(job_id)
@@ -788,6 +790,16 @@ def run_analyze(job_id):
             raise RuntimeError(
                 "No highlight candidates found. Add an AI provider or install faster-whisper."
             )
+        analysis_mode = (
+            "live" if (live_capture or reuse_live)
+            else ("captions" if (segments and not analysis_media) else "media")
+        )
+        signal_sources = {
+            "heatmap": bool(heatmap),
+            "audio": bool(energy),
+            "chat": bool(chat_events),
+            "transcript": bool(segments),
+        }
         _save_meta(job_id, user_id, {
             "path": source,
             "duration": info["duration"],
@@ -796,7 +808,7 @@ def run_analyze(job_id):
             "channel": info.get("channel") or "",
             "url": job["url"],
             "video_id": video_id,
-            "analysis": "live" if (live_capture or reuse_live) else ("captions" if (segments and not analysis_media) else "media"),
+            "analysis": analysis_mode,
             "chat_messages": len(chat_events),
             "signals": {
                 "heatmap": bool(heatmap),
@@ -804,6 +816,15 @@ def run_analyze(job_id):
                 "chat_messages": len(chat_events),
             },
         })
+        # Surface the analysis path to the console without exposing transcript
+        # or chat content. ``_live_options`` preserves any spike picks written
+        # by the API while the recording was running.
+        current_options = _live_options(job_id) or merged
+        current_options.update({
+            "analysis": analysis_mode,
+            "signal_sources": signal_sources,
+        })
+        _set_options(job_id, current_options)
         if auto_render_indices:
             db.update_job(
                 job_id, status="running", stage="queued", progress=0.99,

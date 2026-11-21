@@ -272,12 +272,6 @@ function bind() {
   $("#paletteGrid").addEventListener("click", (e) => {
     const b = e.target.closest("[data-palette]");
     if (!b) return;
-    if (b.dataset.palette === "vice") {
-      const firstTime = prefs.palette !== "vice";
-      setPref({ palette: "vice" });
-      if (firstTime) toast("Sunset radio online. Interface sounds enabled.", "ok", "Vice 6");
-      return;
-    }
     setPref({ palette: b.dataset.palette });
   });
   $("#accentSwatches").addEventListener("click", (e) => {

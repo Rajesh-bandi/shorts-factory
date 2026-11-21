@@ -1,4 +1,4 @@
-import { state, $, $$, esc, api, truthy, fmtBytes } from "./core.js";
+import { state, $, $$, esc, api, truthy, fmt, fmtBytes, timeAgo, loadPipelineStatus } from "./core.js";
 import { icon } from "./icons.js";
 import { prefs } from "./prefs.js";
 import { toast } from "./ui.js";
@@ -96,6 +96,7 @@ function switchTab(tab, updateHash = true) {
   $$(".tab-panel").forEach((p) => p.classList.toggle("active", p.id === `tab-${tab}`));
   if (updateHash && state.view === "settings") history.replaceState(null, "", `#settings/${tab}`);
   if (tab === "system") loadHealth();
+  if (tab === "pipeline") loadPipeline();
 }
 function syncCaptionControls() {
   const presetEl = $("#caption_preset");
@@ -209,6 +210,47 @@ function applyCaptionPreset(name) {
   $("#caption_box").checked = p.box;
   syncCaptionControls(); updateCaptionPreview();
 }
+/* ---------- signal pipeline cache ---------- */
+async function loadPipeline(force = false) {
+  const grid = $("#pipelineCacheGrid");
+  if (grid && !grid.dataset.ready) {
+    grid.innerHTML = Array.from({ length: 6 }, () => `<div class="pipeline-cache-cell"><span>loading</span><strong>—</strong></div>`).join("");
+  }
+  try {
+    const data = await loadPipelineStatus(force);
+    if (data) renderPipelineCache();
+  } catch (e) {
+    const foot = $("#pipelineCacheFoot");
+    if (foot) foot.textContent = "Pipeline status unavailable: " + e.message;
+  }
+}
+function renderPipelineCache() {
+  const p = state.pipeline || {};
+  const cache = p.cache || {};
+  const live = p.live || {};
+  const jobs = p.jobs || {};
+  const grid = $("#pipelineCacheGrid");
+  if (grid) {
+    const cells = [
+      ["videos", fmt(cache.videos || 0), "analyzed once"],
+      ["heatmaps", fmt(cache.heatmaps || 0), "replay curves"],
+      ["transcripts", fmt(cache.transcripts || 0), "timed units"],
+      ["audio energy", fmt(cache.energy || 0), "energy curves"],
+      ["chat replays", fmt(cache.chat_replays || 0), "spike sources"],
+      ["QA failures", fmt(jobs.stages?.qa || 0), "need attention"],
+    ];
+    grid.innerHTML = cells.map(([label, value, sub]) => `<div class="pipeline-cache-cell"><span>${label}</span><strong>${value}</strong><small>${sub}</small></div>`).join("");
+    grid.dataset.ready = "1";
+  }
+  const foot = $("#pipelineCacheFoot");
+  if (foot) {
+    const updated = cache.updated_at ? `last write ${timeAgo(cache.updated_at)}` : "no analysis cached yet";
+    const scan = live.scan_seconds ? `scan ${Math.round(live.scan_seconds / 60)}m` : "scan 15m";
+    const pad = live.pad_seconds ? `±${Math.round(live.pad_seconds)}s` : "±60s";
+    const cap = live.max_capture_seconds ? `cap ${Math.round(live.max_capture_seconds / 60)}m` : "cap 30m";
+    foot.textContent = `${updated} · public by video id · live ${scan} / ${pad} / ${cap} · ${jobs.running || 0} running · ${jobs.review || 0} review`;
+  }
+}
 /* ---------- health / AI ---------- */
 async function loadHealth(force = false) {
   if (state.healthLoaded && !force) return;
@@ -240,4 +282,4 @@ async function testAI() {
   finally { btn.classList.remove("loading"); btn.disabled = false; }
 }
 
-export { loadSettings, saveSettings, chooseOutputFolder, switchTab, syncCaptionControls, stopCaptionPreview, updateCaptionPreview, applyCaptionPreset, loadHealth, testAI };
+export { loadSettings, saveSettings, chooseOutputFolder, switchTab, syncCaptionControls, stopCaptionPreview, updateCaptionPreview, applyCaptionPreset, loadHealth, loadPipeline, testAI };

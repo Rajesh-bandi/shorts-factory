@@ -1,16 +1,38 @@
-/* ---------- dashboard ---------- */
-import { state, $, esc, fmt, api, isoDate, timeAgo, jobEta, statusMeta } from "./core.js";
+/* ---------- overview / signal console ---------- */
+import { state, $, esc, fmt, api, isoDate, timeAgo, jobEta, statusMeta, stageLabel, loadPipelineStatus, PIPELINE_STAGES } from "./core.js";
 import { icon } from "./icons.js";
 import { prefs } from "./prefs.js";
 import { toast } from "./ui.js";
+
+let pipelineFetchedAt = 0;
+let pipelineBusy = false;
+
+function clockLabel(seconds) {
+  const total = Math.max(0, Math.floor(Number(seconds) || 0));
+  const h = Math.floor(total / 3600), m = Math.floor((total % 3600) / 60), s = total % 60;
+  return h ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}` : `${m}:${String(s).padStart(2, "0")}`;
+}
 
 async function loadDashboard(showErrors = false) {
   try {
     const an = await api("/analytics").catch(() => null);
     if (an) state.analytics = an;
+    await refreshPipeline(true);
     renderDashboard();
   } catch (e) { if (showErrors) toast(e.message, "err"); }
 }
+
+async function refreshPipeline(force = false) {
+  if (pipelineBusy) return;
+  const now = Date.now();
+  if (!force && now - pipelineFetchedAt < 15000) return;
+  pipelineBusy = true;
+  try {
+    await loadPipelineStatus(force);
+    pipelineFetchedAt = Date.now();
+  } finally { pipelineBusy = false; }
+}
+
 function setStat(sel, value, format = fmt) {
   const el = $(sel);
   if (!el) return;
@@ -26,6 +48,7 @@ function setStat(sel, value, format = fmt) {
   };
   requestAnimationFrame(step);
 }
+
 function renderDashboard() {
   const d = state.analytics || {};
   const ch = d.channel || (state.auth && state.auth.channel) || null;
@@ -33,47 +56,133 @@ function renderDashboard() {
   setStat("#stViews", ch ? ch.views : null);
   setStat("#stVideos", ch ? ch.video_count : null);
   setStat("#stUploads", d.clips_made ?? 0);
-  $("#stSubsFoot").textContent = ch ? "from YouTube" : "connect a channel";
-  $("#stViewsFoot").textContent = ch ? "channel lifetime" : "connect a channel";
-  $("#stVideosFoot").textContent = ch ? "published" : "connect a channel";
-  $("#stUploadsFoot").textContent = "clips rendered";
+  const subsFoot = $("#stSubsFoot");
+  if (subsFoot) subsFoot.textContent = ch ? "from YouTube" : "connect a channel";
+  const viewsFoot = $("#stViewsFoot");
+  if (viewsFoot) viewsFoot.textContent = ch ? "channel lifetime" : "connect a channel";
+  const videosFoot = $("#stVideosFoot");
+  if (videosFoot) videosFoot.textContent = ch ? "published" : "connect a channel";
+  const uploadsFoot = $("#stUploadsFoot");
+  if (uploadsFoot) uploadsFoot.textContent = "clips rendered";
   renderChannelStrip(ch);
   renderPipelineStrip();
+  renderCache();
+  renderLiveProtocol();
+  renderDefaults();
   const snaps = (d.snapshots || []).map((s) => ({ ts: s.ts, value: s.subs }));
   drawChart("#dashChart", "#dashChartWrap", "#dashTip", snaps, fmt);
-  $("#sparkNote").textContent = snaps.length > 1
+  const spark = $("#sparkNote");
+  if (spark) spark.textContent = snaps.length > 1
     ? `${snaps.length} snapshots · latest ${fmt(snaps[snaps.length - 1].value)} subscribers`
     : "No snapshots yet — refresh analytics to start tracking.";
   renderRecentJobs();
 }
+
 function renderChannelStrip(ch) {
   const el = $("#channelStrip");
   if (!el) return;
   if (ch && ch.title) {
     el.innerHTML = `<div class="cs-avatar">${ch.thumb ? `<img src="${esc(ch.thumb)}" alt="">` : icon("youtube")}</div>
-      <div class="cs-main"><div class="cs-title">${esc(ch.title)}<span class="pill ok">live</span></div><div class="cs-sub">${fmt(ch.subs)} subscribers · ${fmt(ch.views)} views · ${fmt(ch.video_count)} videos</div></div>
-      <div class="cs-actions"><button class="btn ghost sm" data-go="analytics">${icon("chart")}Analytics</button><button class="btn primary sm" data-go="create">${icon("create")}New short</button></div>`;
+      <div class="cs-main"><div class="cs-title">${esc(ch.title)}<span class="pill ok">connected</span></div><div class="cs-sub">${fmt(ch.subs)} subscribers · ${fmt(ch.views)} views · ${fmt(ch.video_count)} videos</div></div>
+      <div class="cs-actions"><button class="btn ghost sm" data-go="analytics">${icon("chart")}Signals</button><button class="btn primary sm" data-go="create">${icon("create")}New short</button></div>`;
   } else {
     el.innerHTML = `<span class="cs-ico">${icon("youtube")}</span>
       <div class="cs-main"><div class="cs-title">YouTube not connected <span class="pill muted">local mode</span></div><div class="cs-sub">Rendering works offline. Connect a channel for auto-upload, stats and the growth advisor.</div></div>
       <div class="cs-actions"><button class="btn primary sm" data-go="settings" data-tab-target="channel">${icon("youtube")}Connect channel</button></div>`;
   }
 }
+
+function stageCounts() {
+  const jobs = state.jobs || [];
+  const running = jobs.filter((j) => ["queued", "running"].includes(j.status));
+  const count = (stages) => running.filter((j) => stages.includes(j.stage)).length;
+  const remote = state.pipeline?.jobs?.stages || {};
+  return {
+    ingest: count(["downloading", "recording", "live_scan"]),
+    signals: count(["transcribing", "analyzing"]),
+    rank: count(["live_pick"]),
+    cut: count(["clipping"]),
+    render: count(["uploading"]),
+    qa: Number(remote.qa || 0),
+  };
+}
+
 function renderPipelineStrip() {
   const jobs = state.jobs || [];
-  const renderStages = new Set(["clipping", "uploading"]);
-  const scanning = jobs.filter((j) => ["queued", "running"].includes(j.status) && !renderStages.has(j.stage)).length;
+  const counts = stageCounts();
+  const running = jobs.filter((j) => ["queued", "running"].includes(j.status)).length;
   const review = jobs.filter((j) => j.status === "review").length;
-  const rendering = jobs.filter((j) => j.status === "running" && renderStages.has(j.stage)).length;
-  const done = jobs.filter((j) => j.status === "done").length;
-  const counts = { scan: scanning, review, render: rendering, done };
+  const summary = $("#stageSummary");
+  if (summary) summary.textContent = `${running} running · ${review} waiting`;
+
   Object.entries(counts).forEach(([key, value]) => {
-    const valueEl = document.getElementById(`pipe${key[0].toUpperCase()}${key.slice(1)}`);
-    if (valueEl) valueEl.textContent = String(value);
-    const step = document.querySelector(`[data-pipe="${key}"]`);
-    if (step) step.classList.toggle("on", value > 0);
+    const el = document.getElementById(`stage${key[0].toUpperCase()}${key.slice(1)}`);
+    if (el) el.textContent = String(value);
+    const node = document.querySelector(`[data-stage="${key}"]`);
+    if (node) {
+      node.classList.toggle("on", value > 0);
+      node.classList.toggle("hot", key === "rank" && value > 0);
+      node.classList.toggle("warn", key === "qa" && value > 0);
+    }
   });
+
+  const frameMode = String(state.pipeline?.defaults?.reframe || state.settings?.reframe || "auto").toLowerCase();
+  const frame = document.getElementById("stageFrame");
+  if (frame) frame.textContent = frameMode === "crop" ? "crop" : frameMode === "blur" ? "blur" : "auto";
+  const frameNode = document.querySelector('[data-stage="frame"]');
+  if (frameNode) frameNode.classList.toggle("on", running > 0 && counts.cut > 0);
+
+  const note = $("#stageNote");
+  if (note) {
+    const cache = state.pipeline?.cache;
+    note.textContent = cache
+      ? `${cache.videos || 0} videos cached · ${cache.chat_replays || 0} chat replays reusable`
+      : "Cache telemetry appears when the pipeline status endpoint is available.";
+  }
 }
+
+function renderCache() {
+  const cache = state.pipeline?.cache;
+  const map = {
+    cacheVideos: cache?.videos,
+    cacheHeatmaps: cache?.heatmaps,
+    cacheTranscripts: cache?.transcripts,
+    cacheEnergy: cache?.energy,
+    cacheChat: cache?.chat_replays,
+  };
+  Object.entries(map).forEach(([id, value]) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = value === undefined || value === null ? "—" : fmt(value);
+  });
+  const note = $("#cacheUpdated");
+  if (note) {
+    note.innerHTML = cache && cache.updated_at
+      ? `Last analysis written <b>${timeAgo(cache.updated_at)}</b> · public by video id · reused across users`
+      : "No public analysis cached yet. The first run for a video seeds it.";
+  }
+}
+
+function renderLiveProtocol() {
+  const live = state.pipeline?.live || {};
+  const set = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+  set("liveScan", live.scan_seconds ? clockLabel(live.scan_seconds) : "15:00");
+  set("livePad", live.pad_seconds ? `±${Math.round(live.pad_seconds)}s` : "±60s");
+  set("liveCapture", live.max_capture_seconds ? clockLabel(live.max_capture_seconds) : "30:00");
+  set("livePick", live.pick_timeout_seconds ? clockLabel(live.pick_timeout_seconds) : "5:00");
+}
+
+function renderDefaults() {
+  const d = state.pipeline?.defaults || {};
+  const set = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+  const duration = d.clip_duration || state.settings?.clip_duration || state.settings?.short_length || 45;
+  set("defaultDuration", `${duration}s`);
+  const reframe = String(d.reframe || state.settings?.reframe || "auto");
+  set("defaultReframe", reframe === "crop" ? "crop" : reframe === "blur" ? "blur" : "auto");
+  const model = String(d.llm_model || state.settings?.llm_model || "auto");
+  set("defaultModel", model.length > 18 ? `${model.slice(0, 17)}…` : model);
+  set("defaultChat", d.chat_highlights === false ? "off" : "on");
+}
+
 function renderAdvice(el, adv) {
   if (!el) return;
   adv = adv || {};
@@ -82,22 +191,26 @@ function renderAdvice(el, adv) {
   el.innerHTML = `<div class="next-action"><span class="na-label">next best action</span><p>${esc(next)}</p></div>
     ${actions.length ? `<ul class="adv-list">${actions.slice(0, 4).map((a) => `<li>${esc(a)}</li>`).join("")}</ul>` : ""}`;
 }
+
 function renderRecentJobs() {
   const el = $("#recentJobs");
   if (!el) return;
   if (!state.jobs.length) {
-    el.innerHTML = `<div class="empty" style="padding:26px 14px"><span class="empty-icon">${icon("layers")}</span><strong>No jobs yet</strong><p>Paste a link to start the pipeline.</p></div>`;
+    el.innerHTML = `<div class="empty" style="padding:26px 14px"><span class="empty-icon">${icon("layers")}</span><strong>No runs yet</strong><p>Paste a link to start the evidence pipeline.</p></div>`;
     return;
   }
   el.innerHTML = state.jobs.slice(0, 5).map((j) => {
     const s = statusMeta(j.status);
     const eta = jobEta(j);
+    const live = !!j.options?.live_scan;
+    const source = live ? "live" : j.manual ? "manual" : "vod";
     return `<button class="recent-row" data-open-job="${j.id}">
-      <span class="recent-ico">${icon(j.status === "done" ? "check" : j.status === "review" ? "scissors" : "film")}</span>
-      <span class="recent-main"><strong>${esc(j.title || j.url)}</strong><small>#${j.id} · ${j.short_count} shorts · ${timeAgo(j.created_at)}${eta ? ` · <span class="eta-text" title="${esc(eta.title)}">${esc(eta.label)}</span>` : ""}</small></span>
+      <span class="recent-ico">${icon(j.status === "done" ? "check" : j.status === "review" ? "scissors" : live ? "bolt" : "film")}</span>
+      <span class="recent-main"><strong>${esc(j.title || j.url)}</strong><small>#${j.id} · ${source} · ${stageLabel(j.stage)} · ${j.short_count} short${j.short_count === 1 ? "" : "s"} · ${timeAgo(j.created_at)}${eta ? ` · ${esc(eta.label)}` : ""}</small></span>
       <span class="status ${s.tone}" title="${eta ? esc(eta.title) : ""}"><i></i>${s.label}</span></button>`;
   }).join("");
 }
+
 function drawChart(svgSel, wrapSel, tipSel, points, format = fmt) {
   const svg = $(svgSel), wrap = $(wrapSel), tip = $(tipSel);
   if (!svg || !wrap) return;
@@ -109,7 +222,7 @@ function drawChart(svgSel, wrapSel, tipSel, points, format = fmt) {
     }).join("");
     svg.innerHTML = grid + `<line x1="46" y1="${H / 2}" x2="${W - 14}" y2="${H / 2}" style="stroke:var(--accent);opacity:.35;stroke-dasharray:4 6"/>
       <text x="${W / 2}" y="${H / 2 - 8}" text-anchor="middle" style="fill:var(--dim);font-size:12px">No snapshot history yet</text>
-      <text x="${W / 2}" y="${H / 2 + 12}" text-anchor="middle" style="fill:var(--faint);font-size:9px">Refresh analytics to start drawing this line</text>`;
+      <text x="${W / 2}" y="${H / 2 + 12}" text-anchor="middle" style="fill:var(--faint);font-size:9px">Refresh signals to start drawing this line</text>`;
     if (tip) tip.hidden = true;
     wrap.onmousemove = null;
     return;
@@ -174,4 +287,4 @@ function drawChart(svgSel, wrapSel, tipSel, points, format = fmt) {
   }
 }
 
-export { loadDashboard, setStat, renderDashboard, renderChannelStrip, renderPipelineStrip, renderAdvice, renderRecentJobs, drawChart };
+export { loadDashboard, setStat, renderDashboard, renderChannelStrip, renderPipelineStrip, renderRecentJobs, renderAdvice, drawChart, refreshPipeline, PIPELINE_STAGES };

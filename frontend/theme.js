@@ -3,6 +3,26 @@
   "use strict";
 
   const PALETTES = {
+    signal: {
+      name: "Signal",
+      tag: "lime · instrument panel",
+      dark: {
+        bg: "#080b0d", bg2: "#0b1013", panel: "#0e1417", panel2: "#131c20",
+        line: "#1d2a2f", line2: "#2a3b42",
+        fg: "#e8f1ec", dim: "#a3b5ae", faint: "#6b8079",
+        accent: "#c8f751", accent2: "#5ce1c6",
+        red: "#ff6b6b", green: "#8ee06a", yellow: "#ffd166",
+        blue: "#5cc8ff", purple: "#c792ea", aqua: "#5ce1c6", orange: "#ff9f45",
+      },
+      light: {
+        bg: "#f4f6f2", bg2: "#e9ede7", panel: "#fbfcf9", panel2: "#eff3ec",
+        line: "#dbe2d8", line2: "#c6d0c2",
+        fg: "#14201b", dim: "#42534b", faint: "#71837a",
+        accent: "#3d7a00", accent2: "#007c6e",
+        red: "#c03636", green: "#3d7a00", yellow: "#8a6a00",
+        blue: "#0b6a99", purple: "#7b4ca0", aqua: "#007c6e", orange: "#b35a00",
+      },
+    },
     gruvbox: {
       name: "Gruvbox",
       tag: "warm · terminal",
@@ -148,7 +168,7 @@
   };
 
   const DEFAULT_PREFS = {
-    palette: "vice",
+    palette: "signal",
     mode: "dark",
     accent: "",
     font: "mono",
@@ -170,8 +190,8 @@
     round: ["14px", "9px"],
   };
 
-  const KEY = "ytm.prefs.v3";
-  const LEGACY_KEY = "ytm.prefs.v2";
+  const KEY = "ytm.prefs.v4";
+  const LEGACY_KEY = "ytm.prefs.v3";
 
   function load() {
     const reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -184,7 +204,7 @@
       }
       const old = JSON.parse(localStorage.getItem(LEGACY_KEY) || "null");
       const legacy = old && typeof old === "object" ? old : {};
-      const switchTheme = !legacy.palette || legacy.palette === "gruvbox";
+      const switchTheme = !legacy.palette || legacy.palette === "vice" || legacy.palette === "gruvbox";
       const migrated = {
         ...DEFAULT_PREFS,
         ...legacy,

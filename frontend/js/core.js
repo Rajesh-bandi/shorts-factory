@@ -19,7 +19,7 @@ export const state = {
   createMode: "auto", manualJobId: null, manualInputJob: null, capTimer: null, capTick: 0,
   history: [], historyLoaded: false, historySel: {}, historyQuery: "", historyFilter: "all",
   account: null, accountMode: "login", authConfig: null, appStarted: false, historyPoll: null,
-  localMode: false, prefsTimer: null, prefsDirty: false, liveCursor: {}
+  localMode: false, prefsTimer: null, prefsDirty: false, liveCursor: {}, pipeline: null
 };
 
 export const $ = (s, r = document) => r.querySelector(s);
@@ -108,9 +108,39 @@ export function statusMeta(status) {
     error: { label: "Failed", tone: "bad" }, canceled: { label: "Canceled", tone: "muted" } })[status] || { label: status || "—", tone: "muted" };
 }
 export function stageLabel(stage) {
-  return ({ queued: "Queued", downloading: "Reading source / fetching", recording: "Recording live", live_pick: "Waiting for your spike pick", live_scan: "Watching live chat", transcribing: "Transcript", analyzing: "AI picking moments",
-    review: "Awaiting review", manual: "Manual cut ready", clipping: "Fetching ranges + rendering", uploading: "Uploading", done: "Done",
+  return ({ queued: "Queued", downloading: "Ingesting source", recording: "Recording live", live_pick: "Waiting for your spike pick", live_scan: "Watching live chat", transcribing: "Building transcript signals", analyzing: "Ranking windows",
+    review: "Evidence ready for review", manual: "Manual range ready", clipping: "Cutting + framing + rendering", uploading: "Uploading + QA", done: "Done",
     canceling: "Canceling", canceled: "Canceled" })[stage] || stage || "Working";
+}
+
+/** The seven pipeline stages used by the console UI. */
+export const PIPELINE_STAGES = ["ingest", "signals", "rank", "cut", "frame", "render", "qa"];
+
+/** Load aggregate pipeline/cache telemetry once and keep it on state. */
+export async function loadPipelineStatus(force = false) {
+  if (state.pipeline && !force) return state.pipeline;
+  try {
+    state.pipeline = await api("/pipeline/status");
+  } catch (_) {
+    if (!state.pipeline) state.pipeline = null;
+  }
+  return state.pipeline;
+}
+
+/** Map a job row onto the seven-stage rail. */
+export function jobStageIndex(job) {
+  if (!job) return -1;
+  const stage = job.stage || "";
+  if (job.status === "done") return PIPELINE_STAGES.length;
+  if (job.status === "queued") return -1;
+  if (["downloading", "recording", "live_scan"].includes(stage)) return 0;
+  if (["transcribing", "analyzing"].includes(stage)) return 1;
+  if (stage === "live_pick") return 2;
+  if (job.status === "review" || stage === "review" || stage === "manual") return 2;
+  if (stage === "clipping") return 4;
+  if (stage === "uploading") return 5;
+  if (job.status === "error" || job.status === "canceled") return -1;
+  return 0;
 }
 
 let unauthorizedHandler = null;

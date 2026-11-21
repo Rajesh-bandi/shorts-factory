@@ -1000,6 +1000,63 @@ def analytics_summary(user: CurrentUser):
     return analytics.summary(user["id"])
 
 
+@app.get("/api/pipeline/status")
+def pipeline_status(user: CurrentUser):
+    """Aggregate signal-pipeline state for the console dashboard.
+
+    No video titles, transcripts or user secrets are returned - only counts and
+    the effective live/render settings so the UI can explain what the pipeline
+    will do next.
+    """
+    cache = db.video_cache_stats()
+    chat_dir = os.path.join(str(config.DATA_DIR), "cache", "chat")
+    try:
+        chat_replays = len([
+            path for path in glob.glob(os.path.join(chat_dir, "*.live_chat.json"))
+            if os.path.getsize(path) > 0
+        ])
+    except OSError:
+        chat_replays = 0
+    cache["chat_replays"] = chat_replays
+
+    jobs = db.list_jobs(user["id"], limit=500)
+    running = [job for job in jobs if job.get("status") == "running"]
+    review = [job for job in jobs if job.get("status") == "review"]
+    qa_failed = sum(
+        1 for clip in db.list_clips(user["id"], limit=500)
+        if clip.get("qa_status") == "failed"
+    )
+    stages = {
+        "ingest": sum(job.get("stage") in ("downloading", "recording") for job in running),
+        "signals": sum(job.get("stage") in ("transcribing", "analyzing") for job in running),
+        "rank": sum(job.get("stage") == "live_pick" for job in running),
+        "cut": sum(job.get("stage") == "clipping" for job in running),
+        "render": sum(job.get("stage") in ("clipping", "uploading") for job in running),
+        "qa": qa_failed,
+    }
+    return {
+        "cache": cache,
+        "live": {
+            "scan_seconds": downloader.live_chat_scan_seconds(),
+            "pad_seconds": downloader.live_spike_pad_seconds(),
+            "max_capture_seconds": downloader.live_max_capture_seconds(),
+            "pick_timeout_seconds": downloader.live_pick_timeout_seconds(),
+        },
+        "defaults": {
+            "clip_duration": int(settings.get(user["id"], "clip_duration") or settings.get(user["id"], "short_length") or 45),
+            "reframe": settings.get(user["id"], "reframe") or "auto",
+            "llm_model": settings.get(user["id"], "llm_model") or config.LLM_DEFAULT_MODEL or "auto",
+            "chat_highlights": bool(settings.get(user["id"], "chat_highlights", True)),
+        },
+        "jobs": {
+            "running": len(running),
+            "review": len(review),
+            "total": len(jobs),
+            "stages": stages,
+        },
+    }
+
+
 @app.get("/api/advisor")
 def get_advice(user: CurrentUser):
     try:

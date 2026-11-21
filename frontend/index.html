@@ -3,15 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Shorts Factory — long → vertical</title>
-<meta name="theme-color" content="#1b1b1b">
+<title>Shorts Factory — signal console</title>
+<meta name="theme-color" content="#080b0d">
 <meta name="color-scheme" content="dark light">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
-<script src="theme.js?v=20261115-13"></script>
-<script src="config.js?v=20261120-1"></script>
-    <link rel="stylesheet" href="style.css?v=20261121-1">
-    <link rel="stylesheet" href="aesthetic.css?v=20261115-3">
-    <link rel="stylesheet" href="vice.css?v=20261115-19">
+<script src="theme.js?v=20261121-2"></script>
+<script src="config.js?v=20261121-2"></script>
+<link rel="stylesheet" href="signal.css?v=20261121-1">
 </head>
 <body class="auth-locked">
 <a class="skip-link" href="#mainContent">Skip to content</a>
@@ -19,29 +17,25 @@
   <div class="boot-mark"><span>▶</span></div>
   <div class="boot-word">shorts <em>factory</em></div>
   <div class="boot-bar"><span></span></div>
-  <small>warming the neon</small>
+  <small>calibrating signal pipeline</small>
 </div>
+
 <div class="auth-gate" id="authGate">
-  <div class="vice-scene auth-scene" aria-hidden="true">
-    <span class="vice-clouds"></span>
-    <span class="vice-haze"></span>
-    <span class="vice-sun"></span>
-    <span class="vice-city"></span>
-    <span class="vice-water"></span>
-    <span class="vice-shore"></span>
-    <span class="vice-palm p-left"></span>
-    <span class="vice-palm p-right"></span>
-    <span class="vice-wordmark"><b>VICE</b><i>6</i></span>
-    <span class="vice-scanlines"></span>
-  </div>
-  <div class="vice-radio" aria-hidden="true">
-    <span class="vice-eq"><i></i><i></i><i></i><i></i><i></i></span>
-    <span><strong>VICE FM</strong><small>98.6 · NIGHT DRIVE</small></span>
+  <div class="auth-visual" aria-hidden="true">
+    <div class="auth-kicker"><span class="live-pip"></span> signal console · private workspace</div>
+    <div>
+      <div class="auth-wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      <h2>Find the moment.<br><span>Prove it.</span></h2>
+      <p>Replay heat, audio energy, chat velocity and transcript shape become one ranked window. Then the cut, the frame, the captions and the QA — all traceable.</p>
+    </div>
+    <div class="auth-pipeline">
+      <span>01 ingest</span><span>02 signals</span><span>03 rank</span><span>04 cut</span><span>05 frame</span><span>06 render</span><span>07 qa</span>
+    </div>
   </div>
   <div class="auth-card">
     <div class="auth-mark"><span>▶</span></div>
     <div class="eyebrow">private workspace</div>
-    <h1>Shorts <span class="grad-text">Factory</span></h1>
+    <h1>Shorts <span class="accent-text">Factory</span></h1>
     <p class="auth-sub">Sign in to your own channels, keys and clip library.</p>
     <div class="auth-tabs" id="authTabs" role="group" aria-label="Account mode">
       <button class="tab active" data-auth-tab="login" aria-pressed="true">Sign in</button>
@@ -58,46 +52,38 @@
     <p class="auth-foot">Desktop installs open straight into one local workspace. Media and keys stay on this computer.</p>
   </div>
 </div>
-<div class="fx" aria-hidden="true">
-  <div class="vice-scene" aria-hidden="true">
-    <span class="vice-clouds"></span>
-    <span class="vice-haze"></span>
-    <span class="vice-sun"></span>
-    <span class="vice-city"></span>
-    <span class="vice-water"></span>
-    <span class="vice-shore"></span>
-    <span class="vice-palm p-left"></span>
-    <span class="vice-palm p-right"></span>
-    <span class="vice-wordmark"><b>VICE</b><i>6</i></span>
-    <span class="vice-scanlines"></span>
-  </div>
-  <span class="fx-blob b1"></span><span class="fx-blob b2"></span><span class="fx-blob b3"></span>
-  <span class="fx-grid"></span><span class="fx-grain"></span><span class="fx-scan"></span>
-</div>
+
+<div class="fx" aria-hidden="true"></div>
 
 <div class="app">
   <aside class="rail" id="rail">
     <div class="rail-head">
-      <button class="brand" data-go="dashboard" aria-label="Go to dashboard">
-        <span class="brand-mark"><span>▶</span></span>
-        <span class="brand-text"><strong>shorts <em>factory</em></strong><small>long → vertical</small></span>
+      <button class="brand" data-go="dashboard" aria-label="Go to overview">
+        <span class="brand-mark"><span class="brand-bars"><i></i><i></i><i></i><i></i></span></span>
+        <span class="brand-text"><strong>shorts <em>factory</em></strong><small>signal console</small></span>
       </button>
       <button class="icon-btn rail-collapse" id="railCollapse" aria-label="Collapse sidebar" aria-controls="rail" aria-expanded="true"><span data-icon="panel"></span></button>
     </div>
 
+    <div class="rail-label">workspace</div>
     <nav class="nav" id="nav" aria-label="Main">
-      <button class="nav-item" data-view="dashboard"><span class="nav-ico" data-icon="dashboard"></span><span class="nav-label">Dashboard</span><span class="nav-key">1</span></button>
-      <button class="nav-item" data-view="create"><span class="nav-ico" data-icon="create"></span><span class="nav-label">Create</span><span class="nav-key">2</span></button>
-      <button class="nav-item" data-view="jobs"><span class="nav-ico" data-icon="layers"></span><span class="nav-label">Jobs</span><em class="badge" id="navBadge"></em><span class="nav-key">3</span></button>
-      <button class="nav-item" data-view="history"><span class="nav-ico" data-icon="film"></span><span class="nav-label">History</span><span class="nav-key">4</span></button>
-      <button class="nav-item" data-view="analytics"><span class="nav-ico" data-icon="chart"></span><span class="nav-label">Analytics</span><span class="nav-key">5</span></button>
+      <button class="nav-item" data-view="dashboard"><span class="nav-ico" data-icon="dashboard"></span><span class="nav-label">Overview</span><span class="nav-key">1</span></button>
+      <button class="nav-item" data-view="create"><span class="nav-ico" data-icon="create"></span><span class="nav-label">Studio</span><span class="nav-key">2</span></button>
+      <button class="nav-item" data-view="jobs"><span class="nav-ico" data-icon="layers"></span><span class="nav-label">Pipeline</span><em class="badge" id="navBadge"></em><span class="nav-key">3</span></button>
+      <button class="nav-item" data-view="history"><span class="nav-ico" data-icon="film"></span><span class="nav-label">Library</span><span class="nav-key">4</span></button>
+      <button class="nav-item" data-view="analytics"><span class="nav-ico" data-icon="chart"></span><span class="nav-label">Signals</span><span class="nav-key">5</span></button>
       <button class="nav-item" data-view="settings"><span class="nav-ico" data-icon="sliders"></span><span class="nav-label">Settings</span><span class="nav-key">6</span></button>
     </nav>
 
     <div class="rail-grow"></div>
 
     <div class="rail-card">
-      <div class="rail-card-eyebrow"><span data-icon="bolt"></span> pipeline</div>
+      <div class="rail-card-eyebrow"><span data-icon="bolt"></span> signal bus</div>
+      <div class="rail-signals">
+        <div class="rail-signal" id="railSignalIngest"><i></i><b>ingest</b><span>idle</span></div>
+        <div class="rail-signal" id="railSignalRank"><i></i><b>rank</b><span>idle</span></div>
+        <div class="rail-signal" id="railSignalRender"><i></i><b>render</b><span>idle</span></div>
+      </div>
       <div class="rail-card-row"><span id="railActive">0 active</span><span class="dot-sep"></span><span id="railReview">0 review</span></div>
       <button class="rail-card-btn" data-go="create">New short <span data-icon="arrow-right"></span></button>
     </div>
@@ -107,14 +93,18 @@
       <span class="conn-copy"><strong id="connLabel">Not connected</strong><small id="connSub">local mode</small></span>
       <span class="conn-chev" data-icon="chevron-right"></span>
     </button>
-    <div class="rail-foot"><span id="appVersion">v1.1.0</span><span class="kbd">⌘K</span></div>
+    <div class="rail-foot"><span id="appVersion">v1.2.0</span><span class="kbd">⌘K</span></div>
   </aside>
   <div class="rail-scrim" id="railScrim"></div>
 
   <main class="main">
     <header class="topbar">
       <button class="icon-btn only-mobile" id="railOpen" aria-label="Open menu" aria-controls="rail" aria-expanded="false"><span data-icon="menu"></span></button>
-      <div class="crumbs"><span class="crumb-muted">ytm</span><span class="crumb-sep">/</span><span id="crumbView">dashboard</span></div>
+      <div class="top-context">
+        <span class="top-kicker">signal console</span>
+        <span class="top-divider"></span>
+        <div class="crumbs"><span class="crumb-muted">workspace</span><span class="crumb-sep">/</span><span id="crumbView">overview</span></div>
+      </div>
       <div class="top-actions">
         <button class="cmd-trigger" id="cmdTrigger" aria-label="Open command palette">
           <span data-icon="search"></span><span class="cmd-text">Search or jump…</span><kbd id="cmdKbd">⌘K</kbd>
@@ -132,13 +122,16 @@
 
     <div class="viewport" id="mainContent" tabindex="-1">
 
-      <!-- ============ DASHBOARD ============ -->
-      <section class="view" id="view-dashboard" data-title="Dashboard">
-        <div class="page-head">
+      <!-- ============ OVERVIEW ============ -->
+      <section class="view" id="view-dashboard" data-title="Overview">
+        <div class="console-head">
           <div>
-            <div class="eyebrow">overview</div>
-            <h1>Command center</h1>
-            <p class="sub">Channel, pipeline and the next move — all in one place.</p>
+            <div class="eyebrow"><span class="live-pip"></span> evidence pipeline · private workspace</div>
+            <h1>Signal <span>console</span></h1>
+            <p class="sub">Every clip starts with evidence: replay heat, audio energy, chat velocity and transcript shape. Rank the window, cut on speech, frame the subject, render, then QA.</p>
+            <div class="console-meta">
+              <span>ingest only what is needed</span><span>cached by video id</span><span>speech-snapped cuts</span><span>9:16 subject-aware</span>
+            </div>
           </div>
           <div class="head-actions">
             <button class="btn ghost" id="dashRefresh"><span data-icon="refresh"></span>Refresh</button>
@@ -146,16 +139,79 @@
           </div>
         </div>
 
+        <section class="stage-console" aria-label="Pipeline stages">
+          <div class="stage-console-head">
+            <div class="eyebrow">live pipeline</div>
+            <div class="stage-legend"><span class="live-pip"></span><span id="stageSummary">0 running · 0 waiting</span></div>
+          </div>
+          <div class="stage-track" id="stageTrack">
+            <button class="stage-node" data-stage="ingest" data-go="jobs"><span class="stage-idx">01</span><strong>Ingest</strong><small>metadata · heatmap</small><em id="stageIngest">0</em></button>
+            <button class="stage-node" data-stage="signals" data-go="jobs"><span class="stage-idx">02</span><strong>Signals</strong><small>audio · chat · text</small><em id="stageSignals">0</em></button>
+            <button class="stage-node" data-stage="rank" data-go="jobs"><span class="stage-idx">03</span><strong>Rank</strong><small>LLM · sliding windows</small><em id="stageRank">0</em></button>
+            <button class="stage-node" data-stage="cut" data-go="jobs"><span class="stage-idx">04</span><strong>Cut</strong><small>speech-snapped ranges</small><em id="stageCut">0</em></button>
+            <button class="stage-node" data-stage="frame" data-go="jobs"><span class="stage-idx">05</span><strong>Frame</strong><small>subject-aware 9:16</small><em id="stageFrame">auto</em></button>
+            <button class="stage-node" data-stage="render" data-go="jobs"><span class="stage-idx">06</span><strong>Render</strong><small>captions · encode</small><em id="stageRender">0</em></button>
+            <button class="stage-node" data-stage="qa" data-go="history"><span class="stage-idx">07</span><strong>QA</strong><small>checks · publish</small><em id="stageQa">0</em></button>
+          </div>
+          <div class="stage-console-foot">
+            <span><span data-icon="info"></span>Renders only the selected ranges — never the full video.</span>
+            <span id="stageNote">Cache warms as videos are analyzed.</span>
+          </div>
+        </section>
+
+        <div class="console-columns">
+          <div class="console-main">
+            <section class="panel cache-panel">
+              <div class="panel-head" style="padding:14px 16px 12px;margin:0">
+                <div><div class="eyebrow">evidence cache</div><h3>Analyze once, reuse everywhere</h3></div>
+                <button class="link-btn" data-go="settings" data-tab-target="pipeline">Inspect →</button>
+              </div>
+              <div class="cache-grid">
+                <div class="cache-cell"><span>videos</span><strong id="cacheVideos">0</strong><small>cached</small></div>
+                <div class="cache-cell"><span>heatmaps</span><strong id="cacheHeatmaps">0</strong><small>replay bins</small></div>
+                <div class="cache-cell"><span>transcripts</span><strong id="cacheTranscripts">0</strong><small>timed units</small></div>
+                <div class="cache-cell"><span>audio</span><strong id="cacheEnergy">0</strong><small>energy curves</small></div>
+                <div class="cache-cell"><span>chat</span><strong id="cacheChat">0</strong><small>replays</small></div>
+              </div>
+              <div class="cache-note" id="cacheUpdated">No public analysis cached yet. The first run for a video seeds it.</div>
+            </section>
+
+            <section class="panel" style="padding:0;overflow:hidden">
+              <div class="panel-head" style="padding:14px 16px 12px;margin:0;border-bottom:1px solid var(--line)">
+                <div><div class="eyebrow">queue</div><h3>Recent runs</h3></div>
+                <button class="link-btn" data-go="jobs">All runs →</button>
+              </div>
+              <div id="recentJobs" class="recent-list"><div style="padding:16px"><div class="skeleton sk-line"></div><div class="skeleton sk-line w70"></div></div></div>
+            </section>
+          </div>
+
+          <aside class="console-side">
+            <section class="panel live-protocol">
+              <div class="panel-head"><div><div class="eyebrow">live protocol</div><h3>Spike → pick → cut</h3></div></div>
+              <div class="protocol-steps">
+                <div class="protocol-step"><b>01</b><span>Watch chat for a surge</span><em id="liveScan">15:00</em></div>
+                <div class="protocol-step"><b>02</b><span>Record the chosen window</span><em id="livePad">±60s</em></div>
+                <div class="protocol-step"><b>03</b><span>Hard capture cap</span><em id="liveCapture">30:00</em></div>
+                <div class="protocol-step"><b>04</b><span>Auto-pick if you wait</span><em id="livePick">5:00</em></div>
+              </div>
+              <button class="btn ghost full-width" data-go="create"><span data-icon="bolt"></span>Start a live run</button>
+            </section>
+            <section class="panel">
+              <div class="panel-head"><div><div class="eyebrow">defaults</div><h3>Render posture</h3></div></div>
+              <div class="kv-list">
+                <div><span>Clip window</span><strong id="defaultDuration">45s</strong></div>
+                <div><span>Reframe</span><strong id="defaultReframe">auto</strong></div>
+                <div><span>Model</span><strong id="defaultModel">auto</strong></div>
+                <div><span>Chat signal</span><strong id="defaultChat">on</strong></div>
+              </div>
+              <button class="btn ghost full-width" style="margin-top:12px" data-go="settings" data-tab-target="pipeline"><span data-icon="sliders"></span>Tune pipeline</button>
+            </section>
+          </aside>
+        </div>
+
         <div class="channel-strip" id="channelStrip">
           <span class="skeleton sk-avatar"></span>
           <div class="cs-main"><span class="skeleton sk-line w40"></span><span class="skeleton sk-line w70"></span></div>
-        </div>
-
-        <div class="pipeline-strip" id="pipelineStrip" aria-label="Pipeline status">
-          <div class="pipe-step" data-pipe="scan"><span class="pipe-dot"></span><div><strong>Signals</strong><small>heatmap · audio · chat</small></div><em id="pipeScan">0</em></div>
-          <div class="pipe-step" data-pipe="review"><span class="pipe-dot"></span><div><strong>AI picks</strong><small>ready to review</small></div><em id="pipeReview">0</em></div>
-          <div class="pipe-step" data-pipe="render"><span class="pipe-dot"></span><div><strong>Rendering</strong><small>9:16 + captions</small></div><em id="pipeRender">0</em></div>
-          <div class="pipe-step" data-pipe="done"><span class="pipe-dot"></span><div><strong>Done</strong><small>clips in history</small></div><em id="pipeDone">0</em></div>
         </div>
 
         <div class="stat-grid">
@@ -181,7 +237,7 @@
           </div>
         </div>
 
-        <div class="card chart-card spot dashboard-chart">
+        <div class="card chart-card spot">
           <div class="card-head">
             <div><div class="eyebrow">audience</div><h3>Subscriber growth</h3></div>
             <div class="legend"><span class="legend-dot"></span>subs</div>
@@ -190,54 +246,38 @@
             <svg id="dashChart" viewBox="0 0 820 260" preserveAspectRatio="none" role="img" aria-label="Subscriber growth chart"></svg>
             <div class="chart-tip" id="dashTip" hidden></div>
           </div>
-          <div class="chart-foot"><span id="sparkNote">No snapshots yet — refresh analytics to start tracking.</span><button class="link-btn" data-go="analytics">Open analytics →</button></div>
-        </div>
-
-        <div class="dash-lower">
-          <div class="card">
-            <div class="card-head"><div><div class="eyebrow">pipeline</div><h3>Recent jobs</h3></div><button class="link-btn" data-go="jobs">All jobs →</button></div>
-            <div id="recentJobs" class="recent-list"><div class="skeleton sk-line"></div></div>
-          </div>
-          <div class="card quick-card">
-            <div class="card-head"><div><div class="eyebrow">shortcuts</div><h3>Quick actions</h3></div></div>
-            <div class="quick-grid">
-              <button class="quick-btn" data-go="create"><span class="q-ico" data-icon="create"></span><span><strong>New short</strong><small>paste a URL</small></span><kbd>N</kbd></button>
-              <button class="quick-btn" data-go="history"><span class="q-ico" data-icon="film"></span><span><strong>History</strong><small>play or clean up</small></span><kbd>4</kbd></button>
-              <button class="quick-btn" data-go="analytics"><span class="q-ico" data-icon="chart"></span><span><strong>Analytics</strong><small>read the data</small></span><kbd>5</kbd></button>
-              <button class="quick-btn" data-go="settings"><span class="q-ico" data-icon="sliders"></span><span><strong>Settings</strong><small>channel &amp; AI</small></span><kbd>6</kbd></button>
-            </div>
-            <div class="kbd-list">
-              <span><kbd>1</kbd>–<kbd>6</kbd> views</span><span><kbd>⌘K</kbd> jump</span><span><kbd>?</kbd> help</span>
-            </div>
-          </div>
+          <div class="chart-foot"><span id="sparkNote">No snapshots yet — refresh analytics to start tracking.</span><button class="link-btn" data-go="analytics">Open signals →</button></div>
         </div>
       </section>
 
-      <!-- ============ CREATE ============ -->
-      <section class="view" id="view-create" data-title="Create">
+      <!-- ============ STUDIO ============ -->
+      <section class="view" id="view-create" data-title="Studio">
         <div class="page-head">
           <div>
             <div class="eyebrow">studio</div>
-            <h1>Make something <span class="grad-text">loopable</span></h1>
-            <p class="sub">Paste a long video. We read its timed transcript first, let AI choose the moments, then download only those ranges — no full-video waiting.</p>
+            <h1>One link. <span class="grad-text">Evidence first.</span></h1>
+            <p class="sub">Read the timed transcript, fuse heatmap + audio + chat evidence, rank sliding windows, then download only the ranges you keep. Nothing is cut on a hunch.</p>
+          </div>
+          <div class="head-actions">
+            <span class="pill">transcript first</span><span class="pill">selective fetch</span>
           </div>
         </div>
 
         <div class="create-mode tabs" id="createModeTabs" role="group" aria-label="Create mode">
-          <button class="tab active" data-create-mode="auto" aria-pressed="true">AI clips</button>
-          <button class="tab" data-create-mode="manual" aria-pressed="false">Manual cut</button>
+          <button class="tab active" data-create-mode="auto" aria-pressed="true">Auto clips</button>
+          <button class="tab" data-create-mode="manual" aria-pressed="false">Manual range</button>
           <button class="tab" data-create-mode="batch" aria-pressed="false">Batch queue</button>
         </div>
 
         <div class="composer spot">
           <div class="create-steps" id="createSteps" aria-label="Create steps">
             <span class="create-step is-active" data-step="1" aria-current="step"><b>01</b> Source</span>
-            <span class="create-step" data-step="2"><b>02</b> Style &amp; render</span>
+            <span class="create-step" data-step="2"><b>02</b> Signals &amp; frame</span>
             <span class="create-step" data-step="3"><b>03</b> Review</span>
           </div>
           <div class="composer-top">
             <div class="composer-label"><span data-icon="link"></span> source video</div>
-            <div class="composer-badges"><span class="pill muted">YouTube</span><span class="pill muted">transcript first</span><span class="pill muted">live chat auto</span><span class="pill muted">up to 1080p</span></div>
+            <div class="composer-badges"><span class="pill muted">YouTube</span><span class="pill muted">heatmap</span><span class="pill muted">audio energy</span><span class="pill muted">chat replay</span><span class="pill muted">up to 1080p</span></div>
           </div>
           <div id="createSourceBody">
             <div class="url-row">
@@ -248,7 +288,7 @@
               </div>
               <button class="btn primary lg" id="btnAnalyze"><span id="btnAnalyzeLabel">Find moments</span><span data-icon="arrow-right"></span></button>
             </div>
-            <p class="hint" style="margin:-4px 0 14px">Live stream? Recording starts as soon as the job starts so no spike is missed. Chat spikes appear in the job card — press <strong>Proceed</strong> on one, or <strong>Next spike</strong> to keep watching. The app records around your pick, transcribes it, and AI cuts the clip. Manual timestamps for a live link start at the beginning of the recording.</p>
+            <p class="hint" style="margin:-4px 0 14px">Live stream? Recording starts as soon as the job starts so no spike is missed. Chat spikes appear in the pipeline card — press <strong>Use this spike</strong> on one, or <strong>Next spike</strong> to keep watching. The app records around your pick, transcribes it, and AI cuts the clip. Manual timestamps for a live link start at the beginning of the recording.</p>
             <p class="inline-error" id="urlHint" hidden></p>
           </div>
 
@@ -290,7 +330,7 @@
                   <label class="switch"><input type="checkbox" id="createAutoUpload"><span class="sw"></span><span>Auto-upload after render</span></label>
                   <p class="hint">Normal AI clips only — batch and manual cuts always stay local. The AI writes each title, description and tags before uploading to your connected channel.</p>
                 </div>
-                <div class="publish-note"><span data-icon="info"></span><span>Every render is saved in <strong>History</strong>. With auto-upload off, clips stay there under <strong>Not uploaded</strong> until you publish them.</span></div>
+                <div class="publish-note"><span data-icon="info"></span><span>Every render is saved in <strong>Library</strong>. With auto-upload off, clips stay there under <strong>Not uploaded</strong> until you publish them.</span></div>
               </div>
 
               <div class="caption-studio">
@@ -385,7 +425,7 @@
                 <div class="pbar"><span id="manualProgress" style="width:0%"></span></div>
                 <div class="manual-meta" id="manualMeta">Enter start and end timestamps, then download only that range.</div>
                 <div class="manual-actions">
-                  <button class="btn ghost sm" id="manualOpenJob" hidden><span data-icon="layers"></span>Open job</button>
+                  <button class="btn ghost sm" id="manualOpenJob" hidden><span data-icon="layers"></span>Open run</button>
                   <button class="btn primary sm" id="manualRender" hidden><span data-icon="scissors"></span>Render 9:16 short</button>
                 </div>
               </div>
@@ -394,12 +434,13 @@
         </div>
 
         <div class="flow" id="createFlow" aria-label="Pipeline">
-          <div class="flow-step"><span class="flow-num">01</span><div><strong>Read transcript</strong><small>YouTube captions first</small></div></div>
-          <div class="flow-step"><span class="flow-num">02</span><div><strong>AI ranks moments</strong><small>before any video download</small></div></div>
-          <div class="flow-step"><span class="flow-num">03</span><div><strong>You review</strong><small>trim &amp; pick</small></div></div>
-          <div class="flow-step"><span class="flow-num">04</span><div><strong>Fetch cuts</strong><small>only selected ranges</small></div></div>
-          <div class="flow-step"><span class="flow-num">05</span><div><strong>Render</strong><small>9:16 + captions</small></div></div>
-          <div class="flow-step"><span class="flow-num">06</span><div><strong>Review &amp; publish</strong><small>from History, with AI metadata</small></div></div>
+          <div class="flow-step"><span class="flow-num">01</span><div><strong>Ingest metadata</strong><small>duration · heatmap · chapters</small></div></div>
+          <div class="flow-step"><span class="flow-num">02</span><div><strong>Build signals</strong><small>audio · chat replay · transcript</small></div></div>
+          <div class="flow-step"><span class="flow-num">03</span><div><strong>Rank windows</strong><small>sliding windows · LLM evidence</small></div></div>
+          <div class="flow-step"><span class="flow-num">04</span><div><strong>You review</strong><small>trim · pick · captions</small></div></div>
+          <div class="flow-step"><span class="flow-num">05</span><div><strong>Selective fetch</strong><small>only chosen ranges</small></div></div>
+          <div class="flow-step"><span class="flow-num">06</span><div><strong>Frame + render</strong><small>subject-aware 9:16</small></div></div>
+          <div class="flow-step"><span class="flow-num">07</span><div><strong>QA + publish</strong><small>checks · metadata · upload</small></div></div>
         </div>
 
         <div class="manual-panel" id="batchPanel" hidden>
@@ -408,26 +449,26 @@
               <div><div class="eyebrow">queue</div><h3>Batch / series</h3></div>
               <span class="pill muted">up to 20 URLs</span>
             </div>
-            <div class="field"><label for="batchName">Batch name</label><input id="batchName" type="text" placeholder="Week 46 — gaming series" maxlength="120"></div>
-            <div class="field"><label for="batchUrls">YouTube URLs <span class="hint">one per line</span></label><textarea id="batchUrls" rows="6" placeholder="https://youtube.com/watch?v=…&#10;https://youtube.com/watch?v=…"></textarea></div>
-            <div class="row">
+            <div class="field" style="padding:14px 16px 0"><label for="batchName">Batch name</label><input id="batchName" type="text" placeholder="Week 46 — gaming series" maxlength="120"></div>
+            <div class="field" style="padding:12px 16px 0"><label for="batchUrls">YouTube URLs <span class="hint">one per line</span></label><textarea id="batchUrls" rows="6" placeholder="https://youtube.com/watch?v=…&#10;https://youtube.com/watch?v=…"></textarea></div>
+            <div class="row" style="padding:12px 16px 0">
               <div class="field"><label for="batchKind">Queue type</label><select id="batchKind"><option value="batch">Batch</option><option value="series">Series</option></select></div>
               <div class="field"><label for="batchCount">Clips per video</label><select id="batchCount"><option value="1">1</option><option value="2" selected>2</option><option value="3">3</option><option value="4">4</option></select></div>
             </div>
-            <div class="review-actions"><button class="btn primary sm" id="btnBatch"><span data-icon="layers"></span>Queue batch</button><span class="hint">Renders and uploads are explicit. Nothing publishes automatically.</span></div>
+            <div class="review-actions" style="padding:14px 16px 16px"><button class="btn primary sm" id="btnBatch"><span data-icon="layers"></span>Queue batch</button><span class="hint">Renders and uploads are explicit. Nothing publishes automatically.</span></div>
           </div>
         </div>
 
         <div id="createActive"></div>
       </section>
 
-      <!-- ============ JOBS ============ -->
-      <section class="view" id="view-jobs" data-title="Jobs">
+      <!-- ============ PIPELINE ============ -->
+      <section class="view" id="view-jobs" data-title="Pipeline">
         <div class="page-head">
           <div>
             <div class="eyebrow">pipeline</div>
-            <h1>Jobs</h1>
-            <p class="sub">Every run, every stage, every clip. Review candidates, trim them, then render.</p>
+            <h1>Runs &amp; evidence</h1>
+            <p class="sub">Each run shows the stage it is in, the signals it used, the windows AI ranked, and the exact frames it rendered. Review the evidence before you cut.</p>
           </div>
           <div class="head-actions">
             <button class="btn ghost" id="jobsRefresh"><span data-icon="refresh"></span>Refresh</button>
@@ -435,10 +476,10 @@
           </div>
         </div>
         <div class="toolbar">
-          <div class="search-box"><span data-icon="search"></span><input id="jobSearch" placeholder="Search jobs…" autocomplete="off" aria-label="Search jobs"></div>
-          <div class="filters" id="jobFilters" role="group" aria-label="Filter jobs">
+          <div class="search-box"><span data-icon="search"></span><input id="jobSearch" placeholder="Search runs, titles, ids…" autocomplete="off" aria-label="Search runs"></div>
+          <div class="filters" id="jobFilters" role="group" aria-label="Filter runs">
             <button class="filter on" data-filter="all" aria-pressed="true">All</button>
-            <button class="filter" data-filter="active" aria-pressed="false">Active</button>
+            <button class="filter" data-filter="active" aria-pressed="false">Running</button>
             <button class="filter" data-filter="review" aria-pressed="false">Review</button>
             <button class="filter" data-filter="done" aria-pressed="false">Done</button>
             <button class="filter" data-filter="error" aria-pressed="false">Failed</button>
@@ -447,13 +488,13 @@
         <div id="jobList"></div>
       </section>
 
-      <!-- ============ HISTORY ============ -->
-      <section class="view" id="view-history" data-title="History">
+      <!-- ============ LIBRARY ============ -->
+      <section class="view" id="view-history" data-title="Library">
         <div class="page-head">
           <div>
             <div class="eyebrow">library</div>
-            <h1>History</h1>
-            <p class="sub">Every Short this app has generated. Play it, open the source job, or clean up local files you no longer need.</p>
+            <h1>Rendered Shorts</h1>
+            <p class="sub">Every Short this app has generated, with QA state, source run and publish status. Play it, open the evidence, or clean up local files.</p>
           </div>
           <div class="head-actions">
             <button class="btn ghost" id="historyRefresh"><span data-icon="refresh"></span>Refresh</button>
@@ -464,7 +505,7 @@
         <div class="toolbar">
           <div class="search-box"><span data-icon="search"></span><input id="historySearch" placeholder="Search generated clips…" autocomplete="off" aria-label="Search generated clips"></div>
           <div class="history-tools">
-            <div class="filters" id="historyFilters" role="group" aria-label="Filter history">
+            <div class="filters" id="historyFilters" role="group" aria-label="Filter library">
               <button class="filter on" data-history-filter="all" aria-pressed="true">All</button>
               <button class="filter" data-history-filter="local" aria-pressed="false">Not uploaded</button>
               <button class="filter" data-history-filter="uploaded" aria-pressed="false">Uploaded</button>
@@ -476,13 +517,13 @@
         <div id="historyGrid" class="history-grid"></div>
       </section>
 
-      <!-- ============ ANALYTICS ============ -->
-      <section class="view" id="view-analytics" data-title="Analytics">
+      <!-- ============ SIGNALS ============ -->
+      <section class="view" id="view-analytics" data-title="Signals">
         <div class="page-head">
           <div>
             <div class="eyebrow">signals</div>
-            <h1>Analytics</h1>
-            <p class="sub">What the channel is doing, which clips land, and where the next win is.</p>
+            <h1>What the channel is telling you</h1>
+            <p class="sub">Channel reach, the clips that landed, and the next evidence-backed move. The same signal vocabulary used by the pipeline.</p>
           </div>
           <div class="head-actions">
             <button class="btn ghost" id="btnExport"><span data-icon="download"></span>Export CSV</button>
@@ -544,7 +585,7 @@
           <div>
             <div class="eyebrow">configuration</div>
             <h1>Settings</h1>
-            <p class="sub">This workspace keeps its encrypted API keys, OAuth client and channel on this computer. Secrets are never sent back to the browser.</p>
+            <p class="sub">Keys, channel, model and render posture. Secrets stay encrypted on the server and are never sent back to the browser.</p>
           </div>
           <div class="head-actions"><button class="btn ghost" id="btnAppearance"><span data-icon="palette"></span>Appearance</button></div>
         </div>
@@ -579,7 +620,7 @@
                 <div class="field"><label for="category_id">Category ID</label><input id="category_id" type="text" placeholder="20" inputmode="numeric"></div>
               </div>
               <div class="field"><label for="upload_tags">Tags</label><input id="upload_tags" type="text" placeholder="shorts, gaming, clips" spellcheck="false"><p class="hint">Comma separated. <code>shorts</code> is always added.</p></div>
-              <p class="publish-note"><span data-icon="info"></span><span>No automatic publishing. Uploads are explicit per clip from History.</span></p>
+              <p class="publish-note"><span data-icon="info"></span><span>No automatic publishing. Uploads are explicit per clip from Library.</span></p>
             </div>
           </div>
         </div>
@@ -590,10 +631,10 @@
               <div><div class="eyebrow">cloud AI</div><h3>AI provider</h3></div>
               <span class="pill muted" id="aiPill">rules mode</span>
             </div>
-            <p class="sub tight">Point this at your hosted Omniroute server on AWS EC2, or any OpenAI-compatible endpoint. Nothing is bundled with the app, so installers stay small and launches stay fast. Without it, highlights come from transcript heuristics.</p>
+            <p class="sub tight" style="padding:0 16px 4px">Point this at your hosted OmniRoute server on AWS EC2, or any OpenAI-compatible endpoint. Nothing is bundled with the app. Without it, highlights come from transcript and signal heuristics.</p>
             <div class="row">
               <div class="field"><label for="llm_base_url">Base URL</label><input id="llm_base_url" type="text" placeholder="https://your-omniroute-host/v1" spellcheck="false"><p class="hint">Include the <code>/v1</code> path. HTTPS is recommended.</p></div>
-              <div class="field"><label for="llm_model">Model (optional)</label><input id="llm_model" type="text" placeholder="leave blank for the server default" spellcheck="false"><p class="hint">Optional. Blank uses the server's default model; OmniRoute falls back to <code>auto</code> when none is configured.</p></div>
+              <div class="field"><label for="llm_model">Model (optional)</label><input id="llm_model" type="text" placeholder="leave blank for the server default" spellcheck="false"><p class="hint">Optional. Blank uses <code>LLM_DEFAULT_MODEL</code>, then OmniRoute <code>auto</code>.</p></div>
             </div>
             <div class="field"><label for="llm_api_key">API key <span class="saved-tag" id="llmKeySaved" hidden>saved</span></label><input id="llm_api_key" type="password" placeholder="key configured on your server" spellcheck="false" autocomplete="new-password"><p class="hint">Stored locally and sent only to the base URL above. If your server has auth disabled, enter any placeholder value.</p></div>
             <div class="test-row">
@@ -604,12 +645,20 @@
         </div>
 
         <div class="tab-panel" id="tab-pipeline" role="tabpanel" aria-labelledby="settingsTab-pipeline">
+          <div class="card pipeline-cache-card">
+            <div class="card-head">
+              <div><div class="eyebrow">cache</div><h3>Signal cache</h3></div>
+              <span class="pill muted">public · by video id</span>
+            </div>
+            <div class="pipeline-cache-grid" id="pipelineCacheGrid"><div class="pipeline-cache-cell"><span>videos</span><strong>0</strong></div></div>
+            <div class="pipeline-cache-foot" id="pipelineCacheFoot">Waiting for pipeline status…</div>
+          </div>
           <div class="settings-grid">
             <div class="card">
               <div class="card-head"><div><div class="eyebrow">transcription</div><h3>Analysis</h3></div></div>
               <div class="field"><label for="whisper_model">Whisper model</label><select id="whisper_model"><option value="tiny">tiny — fastest</option><option value="base">base</option><option value="small">small — recommended</option><option value="medium">medium</option><option value="large-v3">large-v3 — slowest, best</option></select><p class="hint">First run downloads the model.</p></div>
               <div class="field"><label class="switch"><input id="gpu_enabled" type="checkbox" checked><span class="sw"></span><span>Use GPU acceleration</span></label><p class="hint">CUDA for transcription and NVENC for rendering when available. Falls back to CPU automatically.</p></div>
-              <div class="field"><label class="switch"><input id="chat_highlights" type="checkbox" checked><span class="sw"></span><span>Chat spikes on normal videos</span></label><p class="hint">Live streams always use chat-spike detection automatically. For normal videos, use chat replay when available to favour moments viewers reacted to. Video comments have no video-time position.</p></div>
+              <div class="field"><label class="switch"><input id="chat_highlights" type="checkbox" checked><span class="sw"></span><span>Chat spikes on normal videos</span></label><p class="hint">Live streams always use chat-spike detection automatically. For normal videos, use chat replay when available to favour moments viewers reacted to.</p></div>
               <div class="field"><label for="short_length">Target clip length <span class="range-out" id="lengthOut">45s</span></label><input id="short_length" type="range" min="20" max="90" step="5" value="45"></div>
             </div>
             <div class="card">
@@ -625,7 +674,7 @@
                 <p class="hint">New renders are moved here with their thumbnails. Leave blank to keep them inside the app's data folder. Existing clips stay where they are.</p>
               </div>
               <p class="mono-note">Frames are re-encoded at 30 fps. NVENC is used when GPU acceleration is enabled; otherwise libx264. Audio is AAC 160k.</p>
-              <p class="mono-note">Caption style and animation live in <strong>Create → Render options → Caption studio</strong>.</p>
+              <p class="mono-note">Caption style and animation live in <strong>Studio → Render options → Caption studio</strong>.</p>
             </div>
           </div>
         </div>
@@ -649,10 +698,10 @@
 </div>
 
 <nav class="mobile-nav" id="mobileNav" aria-label="Primary mobile">
-  <button class="mnav-item" data-go="dashboard" aria-label="Dashboard"><span data-icon="dashboard"></span><span>Home</span></button>
-  <button class="mnav-item" data-go="create" aria-label="Create"><span data-icon="create"></span><span>Create</span></button>
-  <button class="mnav-item mnav-jobs" data-go="jobs" aria-label="Jobs"><span data-icon="layers"></span><span>Jobs</span><em class="badge" id="mobileBadge"></em></button>
-  <button class="mnav-item" data-go="history" aria-label="History"><span data-icon="film"></span><span>Library</span></button>
+  <button class="mnav-item" data-go="dashboard" aria-label="Overview"><span data-icon="dashboard"></span><span>Home</span></button>
+  <button class="mnav-item" data-go="create" aria-label="Studio"><span data-icon="create"></span><span>Studio</span></button>
+  <button class="mnav-item mnav-jobs" data-go="jobs" aria-label="Pipeline"><span data-icon="layers"></span><span>Pipeline</span><em class="badge" id="mobileBadge"></em></button>
+  <button class="mnav-item" data-go="history" aria-label="Library"><span data-icon="film"></span><span>Library</span></button>
   <button class="mnav-item" data-go="settings" aria-label="Settings"><span data-icon="sliders"></span><span>Settings</span></button>
 </nav>
 
@@ -674,7 +723,7 @@
     <section class="tw-section">
       <div class="tw-label">Accent</div>
       <div class="swatches" id="accentSwatches"></div>
-      <label class="custom-color"><span>Custom</span><input type="color" id="accentCustom" value="#fe8019"></label>
+      <label class="custom-color"><span>Custom</span><input type="color" id="accentCustom" value="#c8f751"></label>
     </section>
     <section class="tw-section">
       <div class="tw-label">Typography</div>
@@ -695,12 +744,12 @@
         <label class="switch"><input type="checkbox" data-effect="grain" checked><span class="sw"></span><span>Film grain</span></label>
         <label class="switch"><input type="checkbox" data-effect="grid"><span class="sw"></span><span>Grid overlay</span></label>
         <label class="switch"><input type="checkbox" data-effect="scan"><span class="sw"></span><span>Scanlines</span></label>
-        <label class="switch"><input type="checkbox" data-effect="cursor" checked><span class="sw"></span><span>Vice cursor</span></label>
+        <label class="switch"><input type="checkbox" data-effect="cursor" checked><span class="sw"></span><span>Custom cursor</span></label>
         <label class="switch"><input type="checkbox" data-effect="sound"><span class="sw"></span><span id="soundLabel">Interface sounds</span></label>
       </div>
     </section>
     <button class="btn ghost full-width" id="twReset"><span data-icon="rotate"></span>Reset appearance</button>
-    <p class="tw-note">Saved to this workspace and synced to this computer. Palette pairs with dark / light automatically.</p>
+    <p class="tw-note">Saved to this workspace and synced to this browser. Palettes pair with dark / light automatically.</p>
   </div>
 </aside>
 <div class="scrim" id="twScrim"></div>
@@ -726,6 +775,6 @@
 <div class="toasts" id="toasts" aria-live="polite" aria-relevant="additions" aria-atomic="false"></div>
 <canvas id="confetti" aria-hidden="true"></canvas>
 
-<script type="module" src="app.js?v=20261121-1"></script>
+<script type="module" src="app.js?v=20261121-2"></script>
 </body>
 </html>

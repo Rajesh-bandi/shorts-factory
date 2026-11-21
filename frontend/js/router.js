@@ -40,7 +40,7 @@ function go(view, push = true) {
     else n.removeAttribute("aria-current");
   });
   $("#crumbView").textContent = view;
-  document.title = `${view[0].toUpperCase() + view.slice(1)} · ${prefs.palette === "vice" ? "Vice 6 · Shorts Factory" : "Shorts Factory"}`;
+  document.title = `${view[0].toUpperCase() + view.slice(1)} — Shorts Factory`;
   if (push) history.replaceState(null, "", `#${view}`);
   closeRail();
   if (view === "dashboard") loadDashboard();

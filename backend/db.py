@@ -4,7 +4,7 @@ import os
 import time
 from contextlib import contextmanager
 
-from sqlalchemy import create_engine, delete, event, select, update
+from sqlalchemy import create_engine, delete, event, func, select, update
 from sqlalchemy.orm import sessionmaker
 
 from . import config
@@ -761,4 +761,35 @@ def clear_video_cache(video_id):
         s.delete(row)
         s.commit()
         return True
+
+
+def video_cache_stats():
+    """Counts for the signal-console dashboard.
+
+    The cache is public and user-independent, so these totals are safe to show
+    to any signed-in user. Only aggregate counts are returned - never titles or
+    transcripts.
+    """
+    with _read() as s:
+        total = int(s.query(func.count(VideoCache.video_id)).scalar() or 0)
+        heatmaps = int(
+            s.query(func.count()).select_from(VideoCache)
+            .filter(func.length(VideoCache.heatmap) > 2).scalar() or 0
+        )
+        transcripts = int(
+            s.query(func.count()).select_from(VideoCache)
+            .filter(func.length(VideoCache.transcript) > 2).scalar() or 0
+        )
+        energy = int(
+            s.query(func.count()).select_from(VideoCache)
+            .filter(func.length(VideoCache.energy) > 2).scalar() or 0
+        )
+        latest = s.query(func.max(VideoCache.updated_at)).scalar()
+        return {
+            "videos": total,
+            "heatmaps": heatmaps,
+            "transcripts": transcripts,
+            "energy": energy,
+            "updated_at": float(latest) if latest else None,
+        }
 

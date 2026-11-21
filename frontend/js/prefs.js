@@ -22,11 +22,10 @@ function applyPrefsUI() {
   const box = $("#modalBox");
   if (box) box.classList.remove("wide");
   const view = state.view || "dashboard";
-  document.title = `${view[0].toUpperCase() + view.slice(1)} · ${prefs.palette === "vice" ? "Vice 6 · Shorts Factory" : "Shorts Factory"}`;
+  document.title = `${view[0].toUpperCase() + view.slice(1)} — Shorts Factory`;
 }
 function setPref(patch) {
   const next = { ...patch };
-  if (next.palette === "vice" && prefs.palette !== "vice") next.sound = true;
   prefs = T.set(next, prefs);
   applyPrefsUI();
   renderTweaks();
@@ -58,10 +57,10 @@ function renderTweaks() {
     const c = prefs.mode === "light" ? p.light : p.dark;
     return `<button class="palette-card${key === prefs.palette ? " on" : ""}" data-palette="${key}" aria-pressed="${key === prefs.palette}">
       <span class="pal-swatches">${[c.bg, c.panel2, c.accent, c.green, c.purple].map((x) => `<i style="background:${x}"></i>`).join("")}</span>
-      <span class="pal-name">${p.name}${key === "vice" ? '<em class="pal-new">new</em>' : ""}</span><small>${p.tag}</small></button>`;
+      <span class="pal-name">${p.name}${key === "signal" ? '<em class="pal-new">new</em>' : ""}</span><small>${p.tag}</small></button>`;
   }).join("");
   const soundLabel = $("#soundLabel");
-  if (soundLabel) soundLabel.textContent = prefs.palette === "vice" ? "Vice 6 interface sounds" : "Interface sounds";
+  if (soundLabel) soundLabel.textContent = "Interface sounds";
   const sw = $("#accentSwatches");
   if (sw) {
     const seen = new Set();
