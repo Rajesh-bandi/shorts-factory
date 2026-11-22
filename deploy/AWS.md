@@ -207,10 +207,12 @@ set them explicitly if you want different bounds:
 
 ```dotenv
 LIVE_CHAT_SCAN_SECONDS=900      # keep watching chat up to 15 min for a next spike
-LIVE_SPIKE_PAD_SECONDS=60       # record 60 s after each spike (no rewind on live)
-LIVE_MAX_CAPTURE_SECONDS=1800   # hard safety cap: 30 min per live job
+LIVE_SPIKE_PAD_SECONDS=60       # fetch 60 s on each side of the picked spike
+LIVE_MAX_CAPTURE_SECONDS=1800   # hard safety cap: 30 min of chat watching per job
 LIVE_PICK_TIMEOUT_SECONDS=300   # auto-pick the strongest spike after 5 min
-LIVE_RECORD_STALL_SECONDS=120   # fail if ffmpeg writes nothing for 2 min
+LIVE_DVR_SECONDS=7200           # assume a 2-hour rewind buffer
+LIVE_DVR_LATENCY_SECONDS=8      # live-edge delay used to align chat and DVR
+LIVE_RECORD_STALL_SECONDS=120   # fail if a manual live recording writes nothing for 2 min
 ```
 
 ---

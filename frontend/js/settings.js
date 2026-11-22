@@ -248,7 +248,7 @@ function renderPipelineCache() {
     const scan = live.scan_seconds ? `scan ${Math.round(live.scan_seconds / 60)}m` : "scan 15m";
     const pad = live.pad_seconds ? `±${Math.round(live.pad_seconds)}s` : "±60s";
     const cap = live.max_capture_seconds ? `cap ${Math.round(live.max_capture_seconds / 60)}m` : "cap 30m";
-    foot.textContent = `${updated} · public by video id · live ${scan} / ${pad} / ${cap} · ${jobs.running || 0} running · ${jobs.review || 0} review`;
+    foot.textContent = `${updated} · public by video id · live ${scan} watch / ${pad} window / ${cap} cap · ${jobs.running || 0} running · ${jobs.review || 0} review`;
   }
 }
 /* ---------- health / AI ---------- */

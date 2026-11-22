@@ -271,28 +271,38 @@ def _env_seconds(name, default, low, high):
 
 
 def live_chat_scan_seconds() -> int:
-    """How long to watch chat while the user skips to the next spike."""
+    """How long to watch chat for a spike before giving up."""
     return _env_seconds("LIVE_CHAT_SCAN_SECONDS", 900, 30, 7200)
 
 
 def live_spike_pad_seconds() -> int:
-    """How much video to record after every chat spike.
+    """How much video to fetch on each side of a chat spike.
 
-    Live streams cannot be rewound without DVR, so the clip is cut from the
-    moments after chat reacts. Keep this short: 60 seconds is enough for a
-    45-second vertical clip and avoids recording long dead air after a spike.
+    The selected window is pulled from YouTube's live DVR buffer after the
+    spike, so this is a read window rather than a continuous recording. Keep
+    it short: 60 seconds is enough for a 45-second vertical clip.
     """
     return _env_seconds("LIVE_SPIKE_PAD_SECONDS", 60, 30, 900)
 
 
 def live_max_capture_seconds() -> int:
-    """Hard safety cap for one live recording."""
+    """Hard safety cap for one live chat watch."""
     return _env_seconds("LIVE_MAX_CAPTURE_SECONDS", 1800, 120, 7200)
 
 
 def live_pick_timeout_seconds() -> int:
-    """How long to wait for a spike choice after the scan stops recording."""
+    """How long to wait for a spike choice after the first spike appears."""
     return _env_seconds("LIVE_PICK_TIMEOUT_SECONDS", 300, 30, 3600)
+
+
+def live_dvr_seconds() -> int:
+    """How far back the live DVR buffer is assumed to reach."""
+    return _env_seconds("LIVE_DVR_SECONDS", 7200, 60, 21600)
+
+
+def live_dvr_latency_seconds() -> int:
+    """Estimated delay between the live edge and the chat timeline."""
+    return _env_seconds("LIVE_DVR_LATENCY_SECONDS", 8, 0, 60)
 
 
 def live_record_stall_seconds() -> int:
@@ -606,6 +616,133 @@ def record_live(url, job_id, user_id, seconds, stage_cb, cancel_cb=None, urls=No
     suffix = " (spike windows covered)" if stopped else ""
     db.log(job_id, f"Recorded {duration:.0f}s of live video{suffix}")
     return {"path": path, "duration": duration, "recorded": duration, "stopped": stopped}
+
+
+def record_live_window(url, job_id, user_id, tag, back_seconds, seconds, stage_cb, cancel_cb=None):
+    """Fetch one past window from the live DVR buffer.
+
+    Interactive live clipping watches chat first and records nothing. Once a
+    spike is chosen, this pulls only the seconds around it from YouTube's DVR
+    buffer. ``back_seconds`` is measured from the live edge at fetch time.
+    """
+    try:
+        seconds = int(round(float(seconds)))
+    except (TypeError, ValueError):
+        seconds = 120
+    seconds = max(5, min(900, seconds))
+    try:
+        back_seconds = int(round(float(back_seconds)))
+    except (TypeError, ValueError):
+        back_seconds = 0
+    back_seconds = max(0, min(live_dvr_seconds(), back_seconds))
+
+    directory = user_media_dir(user_id)
+    path = os.path.join(directory, f"job{job_id}_live_win{tag}.mp4")
+    if os.path.exists(path):
+        duration = probe_duration(path)
+        if duration > 1:
+            db.log(job_id, f"Reusing live DVR window {os.path.basename(path)} ({duration:.0f}s)")
+            return {"path": path, "duration": duration}
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+    stream_urls = resolve_stream_urls(url)
+    if not stream_urls:
+        raise RuntimeError("Could not resolve the live stream URL")
+    tmp = path + ".part.mp4"
+    log_path = os.path.join(directory, f"job{job_id}_live_win{tag}.log")
+    try:
+        os.remove(tmp)
+    except OSError:
+        pass
+
+    cmd = ["ffmpeg", "-y", "-nostdin", "-loglevel", "error"]
+    for stream_url in stream_urls:
+        cmd += [
+            "-reconnect", "1", "-reconnect_streamed", "1",
+            "-reconnect_delay_max", "5",
+            "-sseof", f"-{back_seconds}", "-i", stream_url,
+        ]
+    if len(stream_urls) >= 2:
+        cmd += ["-map", "0:v:0?", "-map", "1:a:0?"]
+    else:
+        cmd += ["-map", "0:v:0?", "-map", "0:a:0?"]
+    cmd += [
+        "-t", str(seconds),
+        "-c", "copy", "-bsf:a", "aac_adtstoasc",
+        "-flush_packets", "1",
+        "-movflags", "+frag_keyframe+empty_moov+default_base_moof",
+        "-avoid_negative_ts", "make_zero", tmp,
+    ]
+
+    db.log(
+        job_id,
+        f"Fetching {seconds}s from the live DVR buffer "
+        f"({back_seconds}s behind the live edge)…",
+    )
+    stage_cb("recording", 0.10)
+    log_handle = open(log_path, "w", encoding="utf-8", errors="replace")
+    canceled = False
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=log_handle,
+            start_new_session=True,
+        )
+        started = time.monotonic()
+        try:
+            while proc.poll() is None:
+                if cancel_cb and cancel_cb():
+                    canceled = True
+                    _stop_process(proc, force=True)
+                    break
+                elapsed = time.monotonic() - started
+                stage_cb(
+                    "recording",
+                    min(0.29, 0.10 + 0.19 * min(1.0, elapsed / max(1, seconds))),
+                )
+                time.sleep(0.25)
+        finally:
+            if proc.poll() is None:
+                _stop_process(proc, force=True)
+    finally:
+        log_handle.close()
+
+    if canceled:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise RuntimeError("canceled")
+
+    duration = probe_duration(tmp)
+    valid = os.path.exists(tmp) and os.path.getsize(tmp) > 1024 and duration > 1
+    if not valid:
+        tail = ""
+        try:
+            with open(log_path, encoding="utf-8", errors="replace") as handle:
+                tail = " | ".join(handle.read().strip().splitlines()[-3:])
+        except OSError:
+            pass
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise RuntimeError(
+            "ffmpeg could not read this live DVR window"
+            + (f": {tail[:300]}" if tail else "")
+        )
+    os.replace(tmp, path)
+    try:
+        os.remove(log_path)
+    except OSError:
+        pass
+    stage_cb("recording", 0.30)
+    db.log(job_id, f"Fetched {duration:.0f}s from the live DVR buffer")
+    return {"path": path, "duration": duration}
 
 
 def trim_local(source, job_id, start, end, user_id, tag="0"):

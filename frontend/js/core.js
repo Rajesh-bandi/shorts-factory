@@ -108,7 +108,7 @@ export function statusMeta(status) {
     error: { label: "Failed", tone: "bad" }, canceled: { label: "Canceled", tone: "muted" } })[status] || { label: status || "—", tone: "muted" };
 }
 export function stageLabel(stage) {
-  return ({ queued: "Queued", downloading: "Ingesting source", recording: "Recording live", live_pick: "Waiting for your spike pick", live_scan: "Watching live chat", transcribing: "Building transcript signals", analyzing: "Ranking windows",
+  return ({ queued: "Queued", downloading: "Ingesting source", recording: "Fetching spike window", live_pick: "Waiting for your spike pick", live_scan: "Watching live chat", transcribing: "Building transcript signals", analyzing: "Ranking windows",
     review: "Evidence ready for review", manual: "Manual range ready", clipping: "Cutting + framing + rendering", uploading: "Uploading + QA", done: "Done",
     canceling: "Canceling", canceled: "Canceled" })[stage] || stage || "Working";
 }

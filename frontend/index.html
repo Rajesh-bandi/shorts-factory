@@ -190,8 +190,8 @@
               <div class="panel-head"><div><div class="eyebrow">live protocol</div><h3>Spike → pick → cut</h3></div></div>
               <div class="protocol-steps">
                 <div class="protocol-step"><b>01</b><span>Watch chat for a surge</span><em id="liveScan">15:00</em></div>
-                <div class="protocol-step"><b>02</b><span>Record the chosen window</span><em id="livePad">±60s</em></div>
-                <div class="protocol-step"><b>03</b><span>Hard capture cap</span><em id="liveCapture">30:00</em></div>
+                <div class="protocol-step"><b>02</b><span>Fetch only the picked window</span><em id="livePad">±60s</em></div>
+                <div class="protocol-step"><b>03</b><span>Max chat watch</span><em id="liveCapture">30:00</em></div>
                 <div class="protocol-step"><b>04</b><span>Auto-pick if you wait</span><em id="livePick">5:00</em></div>
               </div>
               <button class="btn ghost full-width" data-go="create"><span data-icon="bolt"></span>Start a live run</button>
@@ -288,7 +288,7 @@
               </div>
               <button class="btn primary lg" id="btnAnalyze"><span id="btnAnalyzeLabel">Find moments</span><span data-icon="arrow-right"></span></button>
             </div>
-            <p class="hint" style="margin:-4px 0 14px">Live stream? Recording starts as soon as the job starts so no spike is missed. Chat spikes appear in the pipeline card — press <strong>Use this spike</strong> on one, or <strong>Next spike</strong> to keep watching. The app records around your pick, transcribes it, and AI cuts the clip. Manual timestamps for a live link start at the beginning of the recording.</p>
+            <p class="hint" style="margin:-4px 0 14px">Live stream? The app watches chat only — no video is recorded until you pick a spike. Chat spikes appear in the pipeline card — press <strong>Use this spike</strong> on one, or <strong>Next spike</strong> to keep watching. Only the chosen ±60s windows are fetched from the live DVR buffer, transcribed, and cut. Manual timestamps for a live link start at the beginning of the recording.</p>
             <p class="inline-error" id="urlHint" hidden></p>
           </div>
 

@@ -4,6 +4,7 @@ English captions are fetched from YouTube first, then cached. Local Whisper
 (on CPU) is only used when no English captions are available. Audio is decoded
 with ffmpeg so transcription does not depend on PyAV's version-specific API.
 """
+import glob
 import json
 import os
 import re
@@ -18,12 +19,15 @@ _model_cache = {}
 _ENGLISH_LANGS = ("en", "en-US", "en-GB", "en-orig")
 
 
-def _cache_path(job_id, user_id):
-    return os.path.join(downloader.user_media_dir(user_id), f"job{job_id}_transcript.json")
+def _cache_path(job_id, user_id, tag=None):
+    suffix = f"_{tag}" if tag else ""
+    return os.path.join(
+        downloader.user_media_dir(user_id), f"job{job_id}_transcript{suffix}.json"
+    )
 
 
-def _load_cache(job_id, user_id):
-    path = _cache_path(job_id, user_id)
+def _load_cache(job_id, user_id, tag=None):
+    path = _cache_path(job_id, user_id, tag)
     if not os.path.exists(path):
         return None
     try:
@@ -37,10 +41,10 @@ def _load_cache(job_id, user_id):
         return None
 
 
-def _save_cache(job_id, user_id, source, segments):
+def _save_cache(job_id, user_id, source, segments, tag=None):
     try:
         os.makedirs(downloader.user_media_dir(user_id), exist_ok=True)
-        path = _cache_path(job_id, user_id)
+        path = _cache_path(job_id, user_id, tag)
         tmp = path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump({"source": source, "segments": segments}, f, ensure_ascii=False)
@@ -354,23 +358,38 @@ def load_cached(job_id, user_id):
     return _load_cache(job_id, user_id)
 
 
-def clear_cache(job_id, user_id):
-    """Drop a cached transcript when its source recording is discarded."""
-    try:
-        os.remove(_cache_path(job_id, user_id))
-    except OSError:
-        pass
+def clear_cache(job_id, user_id, tag=None):
+    """Drop cached transcripts when their source recording is discarded.
+
+    Without a tag every transcript for the job is removed, which also clears
+    the per-window caches used by interactive live clipping.
+    """
+    if tag:
+        paths = [_cache_path(job_id, user_id, tag)]
+    else:
+        paths = glob.glob(
+            os.path.join(downloader.user_media_dir(user_id), f"job{job_id}_transcript*.json")
+        )
+    for path in paths:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
 
 
 def transcribe(video_path: str, job_id: int, user_id: int, stage_cb, url: str | None = None,
-               cancel_cb=None, info=None, try_online=True):
-    """Return timestamped segments, preferring cached/online English captions."""
+               cancel_cb=None, info=None, try_online=True, tag=None):
+    """Return timestamped segments, preferring cached/online English captions.
+
+    ``tag`` namespaces the cache for live DVR windows so two windows from the
+    same job do not reuse each other's Whisper output.
+    """
     def canceled():
         return bool(cancel_cb and cancel_cb())
 
     if canceled():
         return None
-    cached = _load_cache(job_id, user_id)
+    cached = _load_cache(job_id, user_id, tag)
     if cached and cached["source"] == "youtube":
         db.log(job_id, f"Reusing cached transcript ({len(cached['segments'])} segments)")
         stage_cb("transcribing", 0.45)
@@ -570,7 +589,7 @@ def transcribe(video_path: str, job_id: int, user_id: int, stage_cb, url: str | 
     report(duration, final=True)
     segments = _normalize(raw)
     if segments:
-        _save_cache(job_id, user_id, "whisper", segments)
+        _save_cache(job_id, user_id, "whisper", segments, tag=tag)
     db.log(job_id, f"Transcribed {len(segments)} segments")
     stage_cb("transcribing", 0.65)
     return segments

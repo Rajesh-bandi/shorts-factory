@@ -1041,6 +1041,7 @@ def pipeline_status(user: CurrentUser):
             "pad_seconds": downloader.live_spike_pad_seconds(),
             "max_capture_seconds": downloader.live_max_capture_seconds(),
             "pick_timeout_seconds": downloader.live_pick_timeout_seconds(),
+            "dvr_seconds": downloader.live_dvr_seconds(),
         },
         "defaults": {
             "clip_duration": int(settings.get(user["id"], "clip_duration") or settings.get(user["id"], "short_length") or 45),

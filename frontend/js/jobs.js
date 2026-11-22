@@ -82,19 +82,22 @@ function livePanel(j) {
   const decided = !!o.live_decision;
   const phase = o.live_phase || "scanning";
   const waitingForPick = phase === "picking";
+  const fetching = phase === "fetching";
   const processing = ["processing", "transcribing", "analyzing", "rendering"].includes(phase);
   const needed = Math.max(1, Number(o.live_short_count || j.short_count || 1));
   const currentPeak = current ? Number(current.peak) : null;
   const canProceed = !decided && (picks.length || currentPeak !== null);
   const samples = current && Array.isArray(current.sample) ? current.sample.slice(0, 2) : [];
   const chips = picks.map((p) => `<span class="live-chip">${icon("check")}${clockLabel(p.peak)}<button class="live-chip-x" data-act="live-remove" data-id="${j.id}" data-peak="${Number(p.peak)}" title="Remove spike" aria-label="Remove spike ${clockLabel(p.peak)}">${icon("x")}</button></span>`).join("");
-  const status = processing
-    ? "Recording complete — AI is cutting the selected spike windows."
-    : decided
-      ? `Selected ${picks.length} spike${picks.length === 1 ? "" : "s"} — finishing the recording, then AI cuts the clips.`
-      : waitingForPick
-        ? "Recording stopped. Pick a spike to continue; the strongest is auto-selected if you wait."
-        : "Recording started at job start so no spike is missed. Pick one or keep watching for the next spike.";
+  const status = fetching
+    ? "Fetching only the selected windows from the live DVR buffer — no full stream recording."
+    : processing
+      ? "Windows fetched — AI is cutting the selected spike windows."
+      : decided
+        ? `Selected ${picks.length} spike${picks.length === 1 ? "" : "s"} — fetching only those windows from the live buffer.`
+        : waitingForPick
+          ? "Watching chat only. Pick a spike to continue; the strongest is auto-selected if you wait."
+          : "Watching chat only — no video is recorded until you pick a spike. Pick one or keep watching for the next spike.";
   const spikeBox = current
     ? `<div class="live-spike">
         <div class="live-time">${clockLabel(currentPeak)}</div>
@@ -105,7 +108,7 @@ function livePanel(j) {
         ${!decided && !processing ? `<button class="btn primary sm" data-act="live-add" data-id="${j.id}" data-peak="${currentPeak}">${icon("plus")}Use this spike</button>
         <button class="btn ghost sm" data-act="live-next" data-id="${j.id}" data-peak="${currentPeak}">Next spike ${icon("chevron-right")}</button>` : ""}
       </div>`
-    : `<div class="live-waiting">${icon("clock")}${decided ? "Recording the tail after your last pick…" : "Waiting for the next chat spike…"}</div>`;
+    : `<div class="live-waiting">${icon("clock")}${decided ? "Fetching the selected windows…" : "Waiting for the next chat spike…"}</div>`;
   const maxPeak = Math.max(1, ...spikes.map((s) => Number(s.peak || 0)), ...picks.map((p) => Number(p.peak || 0)));
   const pickedPeaks = new Set(picks.map((p) => Math.round(Number(p.peak || 0) * 10) / 10));
   const markers = spikes.length ? `<div class="live-timeline" aria-hidden="true">${spikes.map((s) => {
@@ -351,12 +354,13 @@ function openPreview(id, idx) {
   const ed = state.edit[id] && state.edit[id][idx];
   const candidate = job.candidates[idx] || {};
   const start = Math.floor(ed ? ed.start : (candidate.start || 0));
-  if (job.source) {
+  const localSource = candidate.source_path ? String(candidate.source_path).split(/[\\/]/).pop() : job.source;
+  if (localSource) {
     const fresh = `${Date.now()}`;
     showModal({
       title: `Source preview · ${start}s`,
       wide: true,
-      body: `<video id="sourcePreviewVideo" class="clip-video" controls autoplay playsinline preload="metadata" src="${API_BASE}/media/${encodeURIComponent(job.source)}?v=${fresh}"></video><p class="hint" style="margin-top:10px">Previewing the local source recording. The render crops this to 9:16.</p>`
+      body: `<video id="sourcePreviewVideo" class="clip-video" controls autoplay playsinline preload="metadata" src="${API_BASE}/media/${encodeURIComponent(localSource)}?v=${fresh}"></video><p class="hint" style="margin-top:10px">Previewing the local source ${candidate.source_path ? "live window" : "recording"}. The render crops this to 9:16.</p>`
     });
     const video = document.getElementById("sourcePreviewVideo");
     if (!video) return;
@@ -411,7 +415,7 @@ async function handleJobClick(e) {
       await api(`/jobs/${id}/live/pick`, { method: "POST", body: JSON.stringify(body) });
       if (act === "live-add" || act === "live-proceed") state.liveCursor[id] = body.peak ?? state.liveCursor[id];
       if (act === "live-clear") state.liveCursor[id] = -1;
-      toast(act === "live-proceed" ? "Spike selection locked — finishing the recording" : act === "live-clear" ? "Spike picks cleared" : act === "live-remove" ? "Spike removed" : `Spike at ${clockLabel(body.peak)} added`, "ok", "Live picker");
+      toast(act === "live-proceed" ? "Spike selection locked — fetching the selected windows" : act === "live-clear" ? "Spike picks cleared" : act === "live-remove" ? "Spike removed" : `Spike at ${clockLabel(body.peak)} added`, "ok", "Live picker");
       pollJobs(true);
     } catch (err) {
       toast(err.message, "err");

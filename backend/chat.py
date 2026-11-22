@@ -305,7 +305,7 @@ def fetch_replay(url, video_id, job_id, user_id, duration, cancel_cb=None, timeo
 
 
 class LiveChatCapture:
-    """Capture live chat in a thread while the video recorder is running."""
+    """Capture live chat in a thread while a live job watches for spikes."""
 
     def __init__(self, url, job_id, user_id):
         self.url = url
@@ -374,12 +374,11 @@ class LiveChatCapture:
 
 
 class LiveSpikeMonitor:
-    """Follow the growing chat file and decide when recording can stop.
+    """Follow the growing chat file and surface chat-rate surges.
 
-    The recorder polls :meth:`poll`; it returns True once the last detected
-    spike has its full post-pad recorded, or once the scan/capture limit is
-    reached without a spike. Parsing is incremental, so a busy chat does not
-    re-read the whole file on every poll.
+    The live watcher polls :meth:`poll`; it returns True once the scan/capture
+    limit is reached or the chat capture has failed. Parsing is incremental, so
+    a busy chat does not re-read the whole file on every poll.
     """
 
     def __init__(self, job_id, user_id, started_at, count=1, target=45, shift=0.0,

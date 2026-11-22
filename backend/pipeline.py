@@ -4,6 +4,7 @@ The web layer only enqueues work. A database-backed worker claims queued jobs
 and calls the synchronous run_* functions below, so a restart can resume work
 instead of silently losing an in-process thread.
 """
+import glob
 import json
 import os
 import threading
@@ -164,10 +165,16 @@ def _duration_label(seconds):
 
 
 def _discard_live_media(job_id, user_id, path=None):
-    """Remove an unusable live recording and its caches so a retry starts fresh."""
+    """Remove unusable live windows and caches so a retry starts fresh."""
+    media_dir = downloader.user_media_dir(user_id)
+    paths = set(glob.glob(os.path.join(media_dir, f"job{job_id}_live*")))
     if path:
+        paths.add(path)
+    for item in paths:
+        if not os.path.isfile(item):
+            continue
         try:
-            os.remove(path)
+            os.remove(item)
         except OSError:
             pass
     chat.clear(job_id, user_id)
@@ -293,37 +300,11 @@ def live_pick(job_id, user_id, action="add", spike=None, peak=None):
     elif action == "remove":
         db.log(job_id, f"Live spike removed — selected: {label}")
     elif decision:
-        db.log(job_id, f"Live spikes selected ({label}) — finishing the recording, then AI cuts the clips")
+        db.log(job_id, f"Live spikes selected ({label}) — fetching only those windows from the live DVR buffer")
     else:
         remaining = max(0, needed - len(picks))
         db.log(job_id, f"Live spike added ({label}) — {remaining} more to pick or press Render selected")
     return {"picks": picks, "decision": decision, "needed": needed}
-
-
-def _live_stop_check(job_id, monitor, scan_seconds, max_seconds, pad):
-    """Poll chat, publish new spikes and stop once the chosen windows are covered."""
-    last_publish = {"at": 0.0}
-
-    def publish(force=False):
-        now = time.monotonic()
-        if not force and now - last_publish["at"] < 2.0:
-            return
-        last_publish["at"] = now
-        _update_live_options(job_id, live_spikes=list(monitor.spikes), live_phase="scanning")
-
-    def stop():
-        monitor.poll()
-        publish()
-        picks, decided = _live_pick_state(job_id)
-        elapsed = monitor.elapsed()
-        if decided and picks:
-            last_peak = max(float(item.get("peak") or 0) for item in picks)
-            return elapsed >= min(max_seconds, last_peak + pad)
-        if elapsed >= min(scan_seconds, max_seconds):
-            return True
-        return False
-
-    return stop, publish
 
 
 def run_analyze(job_id):
@@ -357,7 +338,6 @@ def run_analyze(job_id):
             chat_events = []
             live_chat_cands = []
             chat_capture = None
-            chat_shift = 0.0
             chat_enabled = _as_bool(merged.get("chat_highlights"), True)
             video_id = ""
             heatmap = []
@@ -426,10 +406,11 @@ def run_analyze(job_id):
                         "duration": 0,
                         "channel": raw_info.get("uploader") or raw_info.get("channel") or "",
                     }
-                    db.update_job(job_id, title=info["title"], stage="recording", progress=0.06)
+                    db.update_job(job_id, title=info["title"], stage="live_scan", progress=0.06)
                     pad = downloader.live_spike_pad_seconds()
                     scan_seconds = downloader.live_chat_scan_seconds()
                     max_seconds = downloader.live_max_capture_seconds()
+                    pick_timeout = downloader.live_pick_timeout_seconds()
                     target_length = int(merged.get("clip_duration") or 45)
                     needed = max(1, int(job["short_count"] or 1))
                     _live_session(job_id)
@@ -444,54 +425,99 @@ def run_analyze(job_id):
                         live_target=target_length,
                         live_scan_seconds=scan_seconds,
                         live_max_seconds=max_seconds,
+                        live_pick_timeout=pick_timeout,
                         live_short_count=needed,
+                        live_dvr_seconds=downloader.live_dvr_seconds(),
                     )
                     db.log(
                         job_id,
-                        "Live stream detected — recording starts now so no spike is missed. "
-                        "Pick a spike in this job card, or press Next spike to wait for a later one.",
+                        "Live stream detected — watching chat only. No video is recorded "
+                        "until you pick a spike; only the chosen windows are fetched.",
                     )
-                    try:
-                        stream_urls = downloader.resolve_stream_urls(job["url"])
-                    except Exception as e:
-                        raise RuntimeError(f"Could not open this live stream: {e}") from e
-                    record_started_at = time.time()
+                    watched_started_at = time.time()
                     chat_capture = chat.LiveChatCapture(job["url"], job_id, user_id)
                     chat_capture.start()
-                    chat.set_record_start(job_id, user_id, record_started_at)
-                    chat_shift = (chat_capture.started_at or record_started_at) - record_started_at
+                    watched_started_at = chat_capture.started_at or watched_started_at
+                    chat.set_record_start(job_id, user_id, watched_started_at)
                     monitor = chat.LiveSpikeMonitor(
-                        job_id, user_id, record_started_at,
+                        job_id, user_id, watched_started_at,
                         count=1,
                         target=target_length,
-                        shift=chat_shift,
+                        shift=0.0,
                         pad=pad,
                         scan_seconds=scan_seconds,
                         max_seconds=max_seconds,
                         capture=chat_capture,
                     )
-                    stop_check, publish_spikes = _live_stop_check(
-                        job_id, monitor, scan_seconds, max_seconds, pad
-                    )
+                    pick_deadline = 0.0
+                    last_publish = 0.0
                     try:
-                        recorded = downloader.record_live(
-                            job["url"], job_id, user_id, max_seconds,
-                            cb, cancel_cb=ev.is_set, urls=stream_urls,
-                            stop_cb=stop_check,
-                        )
+                        while True:
+                            _check(ev)
+                            monitor.poll()
+                            elapsed = monitor.elapsed()
+                            now_mono = time.monotonic()
+                            if now_mono - last_publish >= 2.0:
+                                last_publish = now_mono
+                                _update_live_options(
+                                    job_id,
+                                    live_spikes=list(monitor.spikes),
+                                    live_watched_seconds=round(elapsed, 1),
+                                )
+                            if monitor.spikes and not pick_deadline:
+                                pick_deadline = time.time() + pick_timeout
+                                first = monitor.spikes[0]
+                                _update_live_options(
+                                    job_id,
+                                    live_spikes=list(monitor.spikes),
+                                    live_phase="picking",
+                                    live_pick_timeout=pick_timeout,
+                                    live_pick_deadline=round(pick_deadline, 1),
+                                    live_watched_seconds=round(elapsed, 1),
+                                )
+                                db.update_job(job_id, stage="live_pick", progress=0.12)
+                                db.log(
+                                    job_id,
+                                    f"Live spike at {_clock_label(first.get('peak'))} "
+                                    f"({first.get('count') or 0} messages, "
+                                    f"{float(first.get('ratio') or 0):.1f}× chat) — pick it, "
+                                    f"wait for the next one, or let auto-pick take the strongest "
+                                    f"in {max(1, pick_timeout // 60)} min.",
+                                )
+                            picks, decided = _live_pick_state(job_id)
+                            if decided and picks:
+                                break
+                            if pick_deadline and time.time() >= pick_deadline:
+                                break
+                            if monitor.failure:
+                                break
+                            if elapsed >= min(scan_seconds, max_seconds):
+                                break
+                            time.sleep(0.5)
+
+                        picks, decided = _live_pick_state(job_id)
+                        if decided and picks:
+                            # A spike window is only complete once its post-pad
+                            # has happened. Keep reading chat until then so the
+                            # DVR fetch can include the whole window.
+                            wanted_end = max(
+                                float(item.get("peak") or 0) for item in picks
+                            ) + pad
+                            while monitor.elapsed() < min(max_seconds, wanted_end):
+                                _check(ev)
+                                monitor.poll()
+                                time.sleep(0.5)
                     finally:
                         chat_capture.stop()
                     _check(ev)
-                    source = recorded["path"]
-                    info["path"] = source
-                    info["duration"] = recorded["duration"]
-                    publish_spikes(force=True)
+                    watched = monitor.elapsed()
+                    info["duration"] = watched
                     chat_events = chat.read_events(
-                        job_id, user_id, info["duration"],
-                        shift=chat_shift, start_epoch=record_started_at,
+                        job_id, user_id, watched,
+                        shift=0.0, start_epoch=watched_started_at,
                     )
                     if not chat_events:
-                        _discard_live_media(job_id, user_id, source)
+                        _discard_live_media(job_id, user_id)
                         if monitor.failure == "chat-unavailable":
                             raise RuntimeError(
                                 "Live chat could not be captured for this stream, so it cannot "
@@ -504,141 +530,238 @@ def run_analyze(job_id):
                         )
                     spikes = chat.merge_spikes(
                         monitor.spikes,
-                        chat.detect_spikes(chat_events, info["duration"], target_length),
+                        chat.detect_spikes(chat_events, watched, target_length),
                     )
                     picks, decided = _live_pick_state(job_id)
-                    if not spikes and not picks:
-                        _discard_live_media(job_id, user_id, source)
-                        if info["duration"] < 20:
-                            raise RuntimeError(
-                                "The live stream ended before a chat spike was found. "
-                                "Live clipping needs a clear surge in chat."
-                            )
-                        raise RuntimeError(
-                            "No chat spike was found in this recording, so there is nothing to cut. "
-                            "Try again during a busier moment."
-                        )
-                    if not spikes:
-                        spikes = list(picks)
-                    wait_seconds = downloader.live_pick_timeout_seconds()
-                    deadline = time.time() + wait_seconds
-                    _update_live_options(
-                        job_id,
-                        live_spikes=spikes,
-                        live_phase="picking",
-                        live_recording_duration=round(info["duration"], 1),
-                        live_pick_timeout=wait_seconds,
-                        live_pick_deadline=round(deadline, 1),
-                    )
-                    picks, decided = _live_pick_state(job_id)
-                    if not (decided and picks):
-                        db.update_job(job_id, stage="live_pick", progress=0.30)
-                        db.log(
-                            job_id,
-                            f"Recording ready ({info['duration'] / 60:.1f} min). Choose a spike to "
-                            f"continue; the strongest spike is auto-selected in "
-                            f"{max(1, wait_seconds // 60)} min.",
-                        )
-                        while time.time() < deadline:
-                            _check(ev)
-                            picks, decided = _live_pick_state(job_id)
-                            if decided and picks:
-                                break
-                            time.sleep(1.0)
-                    if not (decided and picks):
+                    if not decided or not picks:
                         auto = sorted(
                             spikes,
                             key=lambda item: (item.get("count") or 0, item.get("ratio") or 0),
                             reverse=True,
                         )[:needed]
                         if not auto:
-                            _discard_live_media(job_id, user_id, source)
-                            raise RuntimeError("No usable chat spike was found in this recording")
+                            _discard_live_media(job_id, user_id)
+                            if watched < 20:
+                                raise RuntimeError(
+                                    "The live stream ended before a chat spike was found. "
+                                    "Live clipping needs a clear surge in chat."
+                                )
+                            raise RuntimeError(
+                                "No chat spike was found while watching chat, so there is "
+                                "nothing to cut. Try again during a busier moment."
+                            )
                         with _live_lock:
                             session = _live_session(job_id)
                             session["picks"] = list(auto)
                             session["decision"] = True
-                            picks = list(auto)
+                        picks = list(auto)
                         _update_live_options(job_id, live_picks=picks, live_decision=True)
-                        db.log(job_id, "No spike was picked in time — auto-selected the strongest spike(s).")
+                        if pick_deadline:
+                            db.log(
+                                job_id,
+                                "No spike was picked in time — auto-selected the strongest spike(s).",
+                            )
+                        else:
+                            db.log(job_id, "Auto-selected the strongest chat spike(s).")
                     picks = sorted(
                         picks[:needed], key=lambda item: float(item.get("peak") or 0)
                     )
-                    _update_live_options(job_id, live_phase="processing")
-                    labels = ", ".join(_clock_label(item.get("peak")) for item in picks)
-                    db.log(job_id, f"Selected live spike(s): {labels} — transcribing the recording")
-                    db.update_job(job_id, stage="transcribing", progress=0.36)
-                    segments = transcribe.transcribe(
-                        source, job_id, user_id, cb, None,
-                        cancel_cb=ev.is_set, info=raw_info, try_online=False,
+                    if not picks:
+                        _discard_live_media(job_id, user_id)
+                        raise RuntimeError("No usable chat spike was found while watching chat")
+                    for idx, pick in enumerate(picks):
+                        pick["spike_index"] = idx
+
+                    _update_live_options(
+                        job_id,
+                        live_phase="fetching",
+                        live_picks=picks,
+                        live_decision=True,
+                        live_watched_seconds=round(watched, 1),
                     )
-                    analysis_media = source
-                    try:
-                        energy = signals.audio_energy(source, cancel_cb=ev.is_set)
-                        if energy:
-                            db.log(job_id, f"Live audio energy ready ({len(energy)}s) — ranking the spike cuts")
-                    except Exception as e:
-                        db.log(job_id, f"Live audio energy scan skipped: {e}", "warn")
-                    cands = []
-                    for spike_index, pick in enumerate(picks):
-                        _check(ev)
+                    labels = ", ".join(_clock_label(item.get("peak")) for item in picks)
+                    db.log(
+                        job_id,
+                        f"Selected live spike(s): {labels} — fetching only those windows "
+                        "from the live DVR buffer",
+                    )
+                    db.update_job(job_id, stage="recording", progress=0.18)
+
+                    windows = []
+                    for pick in picks:
                         peak = float(pick.get("peak") or 0)
-                        left = max(0.0, peak - pad)
-                        right = min(info["duration"], peak + pad)
-                        ai_cands = []
-                        if s.llm_available(user_id):
-                            ai_cands = highlights.pick_llm_window(
-                                info["title"], segments, 1, job_id, user_id,
-                                target_length, left, right, peak=peak,
-                                energy=energy, chat_events=chat_events,
-                            )
-                        cand = ai_cands[0] if ai_cands else None
-                        if not cand:
-                            cand = chat.candidate_for_spike(
-                                chat_events, info["duration"], pick,
-                                target_length, pad, segments,
-                            )
-                            if cand:
-                                start, end = signals.snap_window(
-                                    segments, cand["start"], cand["end"], target_length,
-                                    peak=peak, duration=info["duration"],
-                                )
-                                cand["start"] = max(left, start)
-                                cand["end"] = min(right, end)
-                                db.log(
-                                    job_id,
-                                    f"AI pick unavailable for the spike at {_clock_label(peak)} — "
-                                    "using the busiest chat window",
-                                    "warn",
-                                )
-                        if not cand:
+                        start = max(0.0, peak - pad)
+                        end = min(watched, peak + pad)
+                        if end <= start:
                             continue
-                        cand["chat_peak"] = round(peak, 2)
-                        cand["spike_index"] = spike_index
-                        if not cand.get("transcript"):
-                            cand["transcript"] = chat.window_transcript(
-                                segments, cand["start"], cand["end"]
-                            )
-                        signals.attach_signals(cand, segments, energy, None, chat_events)
-                        if any(signals.iou(cand, other) > 0.5 for other in cands):
+                        if windows and start <= windows[-1]["end"] + 10:
+                            windows[-1]["end"] = max(windows[-1]["end"], end)
+                            windows[-1]["picks"].append(pick)
+                        else:
+                            windows.append({"start": start, "end": end, "picks": [pick]})
+                    if not windows:
+                        _discard_live_media(job_id, user_id)
+                        raise RuntimeError("The selected spikes have no usable live window")
+
+                    latency = downloader.live_dvr_latency_seconds()
+                    cands = []
+                    seen_spans = []
+                    global_segments = []
+                    for window_index, window in enumerate(windows):
+                        _check(ev)
+                        fetch_start = max(0.0, window["start"] - latency)
+                        # Chat watching may have stopped a few seconds ago; use
+                        # the current live edge so the DVR seek stays aligned.
+                        back = max(0.0, monitor.elapsed() - fetch_start)
+                        seconds = min(900.0, window["end"] - fetch_start)
+                        if seconds <= 1:
+                            continue
+                        db.log(
+                            job_id,
+                            f"Fetching live window {_clock_label(window['start'])}–"
+                            f"{_clock_label(window['end'])} ({seconds:.0f}s) from the DVR buffer",
+                        )
+                        recorded = downloader.record_live_window(
+                            job["url"], job_id, user_id, window_index,
+                            back, seconds, cb, cancel_cb=ev.is_set,
+                        )
+                        file_path = recorded["path"]
+                        file_duration = float(recorded["duration"])
+                        _check(ev)
+                        db.update_job(job_id, stage="transcribing", progress=0.34)
+                        segments = transcribe.transcribe(
+                            file_path, job_id, user_id, cb, None,
+                            cancel_cb=ev.is_set, info=raw_info, try_online=False,
+                            tag=f"live{window_index}",
+                        )
+                        if not segments:
                             db.log(
                                 job_id,
-                                f"Skipped the clip for {_clock_label(peak)} because it overlaps "
-                                "an earlier pick",
+                                f"No speech found in the window at "
+                                f"{_clock_label(window['start'])} — skipping it",
                                 "warn",
                             )
                             continue
-                        cands.append(cand)
-                        db.log(
-                            job_id,
-                            f"AI cut {_clock_label(cand['start'])}–{_clock_label(cand['end'])} "
-                            f"for the spike at {_clock_label(peak)}: {cand.get('title')}",
+                        global_segments.extend(
+                            {
+                                **seg,
+                                "start": float(seg["start"]) + fetch_start,
+                                "end": float(seg["end"]) + fetch_start,
+                                "words": [
+                                    {
+                                        **word,
+                                        "start": float(word["start"]) + fetch_start,
+                                        "end": float(word["end"]) + fetch_start,
+                                    }
+                                    for word in (seg.get("words") or [])
+                                ],
+                            }
+                            for seg in segments
                         )
+                        try:
+                            energy = signals.audio_energy(file_path, cancel_cb=ev.is_set)
+                            if energy:
+                                db.log(
+                                    job_id,
+                                    f"Live audio energy ready ({len(energy)}s) for the "
+                                    f"{_clock_label(window['start'])} window",
+                                )
+                        except Exception as e:
+                            energy = []
+                            db.log(job_id, f"Live audio energy scan skipped: {e}", "warn")
+                        chat_local = [
+                            dict(event, offset=float(event["offset"]) - fetch_start)
+                            for event in chat_events
+                            if fetch_start - 1.0
+                            <= float(event["offset"])
+                            <= fetch_start + file_duration + 1.0
+                        ]
+                        for pick in window["picks"]:
+                            _check(ev)
+                            peak = float(pick.get("peak") or 0)
+                            peak_local = peak - fetch_start
+                            left = max(0.0, peak_local - pad)
+                            right = min(file_duration, peak_local + pad)
+                            ai_cands = []
+                            if s.llm_available(user_id):
+                                ai_cands = highlights.pick_llm_window(
+                                    info["title"], segments, 1, job_id, user_id,
+                                    target_length, left, right, peak=peak_local,
+                                    energy=energy, chat_events=chat_local,
+                                )
+                            cand = ai_cands[0] if ai_cands else None
+                            if not cand:
+                                local_pick = dict(pick, peak=peak_local)
+                                cand = chat.candidate_for_spike(
+                                    chat_local, file_duration, local_pick,
+                                    target_length, pad, segments,
+                                )
+                                if cand:
+                                    start, end = signals.snap_window(
+                                        segments, cand["start"], cand["end"], target_length,
+                                        peak=peak_local, duration=file_duration,
+                                    )
+                                    cand["start"] = max(left, start)
+                                    cand["end"] = min(right, end)
+                                    db.log(
+                                        job_id,
+                                        f"AI pick unavailable for the spike at {_clock_label(peak)} — "
+                                        "using the busiest chat window",
+                                        "warn",
+                                    )
+                            if not cand:
+                                continue
+                            cand["start"] = max(0.0, float(cand["start"]))
+                            cand["end"] = min(file_duration, float(cand["end"]))
+                            if cand["end"] <= cand["start"] + 0.5:
+                                continue
+                            cand["chat_peak"] = round(peak, 2)
+                            cand["spike_index"] = int(pick.get("spike_index") or 0)
+                            cand["source_path"] = file_path
+                            cand["source_start"] = round(fetch_start, 2)
+                            cand["caption_segments"] = [
+                                {
+                                    "start": max(cand["start"], float(seg["start"])),
+                                    "end": min(cand["end"], float(seg["end"])),
+                                    "text": seg.get("text") or "",
+                                }
+                                for seg in segments
+                                if float(seg["end"]) > cand["start"]
+                                and float(seg["start"]) < cand["end"]
+                            ]
+                            if not cand.get("transcript"):
+                                cand["transcript"] = chat.window_transcript(
+                                    segments, cand["start"], cand["end"]
+                                )
+                            signals.attach_signals(cand, segments, energy, None, chat_local)
+                            span = {
+                                "start": fetch_start + cand["start"],
+                                "end": fetch_start + cand["end"],
+                            }
+                            if any(signals.iou(span, other) > 0.5 for other in seen_spans):
+                                db.log(
+                                    job_id,
+                                    f"Skipped the clip for {_clock_label(peak)} because it "
+                                    "overlaps an earlier pick",
+                                    "warn",
+                                )
+                                continue
+                            seen_spans.append(span)
+                            cands.append(cand)
+                            db.log(
+                                job_id,
+                                f"AI cut {_clock_label(span['start'])}–{_clock_label(span['end'])} "
+                                f"for the spike at {_clock_label(peak)}: {cand.get('title')}",
+                            )
+                    segments = global_segments
                     if not cands:
-                        _discard_live_media(job_id, user_id, source)
+                        _discard_live_media(job_id, user_id)
                         raise RuntimeError(
                             "The selected spike windows had no usable speech or video. Try another spike."
                         )
+                    source = None
+                    analysis_media = None
+                    _update_live_options(job_id, live_phase="processing")
                     db.update_job(job_id, stage="analyzing", progress=0.62)
                     auto_render_indices = list(range(len(cands)))
                     db.log(job_id, f"Prepared {len(cands)} AI clip(s) — rendering with your settings next")
@@ -1075,7 +1198,7 @@ def preview_candidate(job_id, idx, user_id):
     if end <= start + 0.5 or end - start > 180:
         raise RuntimeError("Invalid candidate range")
     meta = _load_meta(job_id, user_id)
-    source = meta.get("path")
+    source = cand.get("source_path") or meta.get("path")
     if source and os.path.exists(source):
         section = downloader.trim_local(
             source, job_id, start, end, user_id, tag=f"preview{int(idx)}",
@@ -1093,7 +1216,7 @@ def _render_clip(job_id, job, user_id, opts, meta, cand, segments, idx, ev):
     end = float(cand["end"])
     clip_segments = cand.get("caption_segments") or segments
 
-    full_source = meta.get("path")
+    full_source = cand.get("source_path") or meta.get("path")
     if not full_source or not os.path.exists(full_source):
         full_source = downloader.existing_source(job_id, user_id)
 

@@ -184,15 +184,16 @@ retention/watch-time metrics.
 
 1. Read metadata, English captions and YouTube's public "most replayed"
    heatmap without downloading video. Past live streams also get their chat
-   replay. For an active live stream, recording starts immediately so no spike
-   is missed. Chat surges are published to the job card as they are detected;
-   pick one with **Proceed**, or **Next spike** to keep watching. The app
-   records `LIVE_SPIKE_PAD_SECONDS` after the last chosen surge (live cannot
-   be rewound), then transcribes the recording and lets AI cut one clip inside
-   each chosen surge window. Recording never exceeds
-   `LIVE_MAX_CAPTURE_SECONDS`; if no pick arrives within
-   `LIVE_PICK_TIMEOUT_SECONDS`, the strongest spike is auto-selected. No chat
-   or no spike fails the job with a clear error.
+   replay. For an active live stream, the app watches chat only and records
+   nothing. Chat surges are published to the job card as they are detected;
+   pick one with **Proceed**, or **Next spike** to keep watching. Once picked,
+   only the ±`LIVE_SPIKE_PAD_SECONDS` windows are fetched from YouTube's live
+   DVR buffer, transcribed, and AI cuts one clip inside each chosen surge
+   window. Chat is watched for at most `LIVE_CHAT_SCAN_SECONDS` (hard-capped by
+   `LIVE_MAX_CAPTURE_SECONDS`); if no pick arrives within
+   `LIVE_PICK_TIMEOUT_SECONDS`, the strongest spike is auto-selected. Streams
+   without a rewind buffer fail with a clear error. No chat or no spike fails
+   the job with a clear error.
 2. Build cheap evidence: the heatmap series, per-second audio energy and chat
    spikes. AI ranks the transcript in overlapping windows while seeing those
    hotspots as supporting evidence, then boundaries are snapped to word and
@@ -249,10 +250,12 @@ the local server to a public network.
 | `JOB_SOURCE_RETENTION_DAYS` | Reserved source-cleanup setting; not enforced yet (0 = keep) |
 | `DEFAULT_JOB_SECONDS` | Fallback ETA before enough job history exists |
 | `LIVE_CHAT_SCAN_SECONDS` | How long to keep watching for a next spike (default 900, 30–7200) |
-| `LIVE_SPIKE_PAD_SECONDS` | Record after each spike; live has no rewind (default 60, 30–900) |
-| `LIVE_MAX_CAPTURE_SECONDS` | Hard safety cap per live capture (default 1800, 120–7200) |
+| `LIVE_SPIKE_PAD_SECONDS` | Seconds fetched on each side of a spike (default 60, 30–900) |
+| `LIVE_MAX_CAPTURE_SECONDS` | Hard cap on one live chat watch (default 1800, 120–7200) |
 | `LIVE_PICK_TIMEOUT_SECONDS` | Auto-pick the strongest spike if nobody chooses (default 300, 30–3600) |
-| `LIVE_RECORD_STALL_SECONDS` | Fail when ffmpeg writes no data (default 120, 60–600) |
+| `LIVE_DVR_SECONDS` | How far back the live DVR buffer is assumed to reach (default 7200, 60–21600) |
+| `LIVE_DVR_LATENCY_SECONDS` | Estimated live-edge delay used to align chat with the DVR (default 8, 0–60) |
+| `LIVE_RECORD_STALL_SECONDS` | Fail when a manual live recording writes no data (default 120, 60–600) |
 
 ## Optional multi-user server
 
