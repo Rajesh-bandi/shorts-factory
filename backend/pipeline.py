@@ -414,6 +414,9 @@ def run_analyze(job_id):
                     target_length = int(merged.get("clip_duration") or 45)
                     needed = max(1, int(job["short_count"] or 1))
                     _live_session(job_id)
+                    # A retry must not reuse a previous run's DVR windows or
+                    # tagged transcripts: chat offsets are relative to this watch.
+                    _discard_live_media(job_id, user_id)
                     _update_live_options(
                         job_id,
                         live_scan=True,
