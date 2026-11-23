@@ -133,6 +133,15 @@ export function jobStageIndex(job) {
   const stage = job.stage || "";
   if (job.status === "done") return PIPELINE_STAGES.length;
   if (job.status === "queued") return -1;
+  if (job.options?.live_scan) {
+    if (["downloading", "live_scan"].includes(stage)) return 0;
+    if (stage === "live_pick") return 2;
+    if (["recording", "transcribing", "analyzing"].includes(stage)) return 3;
+    if (stage === "clipping") return 4;
+    if (stage === "uploading") return 5;
+    if (job.status === "error" || job.status === "canceled") return -1;
+    return 0;
+  }
   if (["downloading", "recording", "live_scan"].includes(stage)) return 0;
   if (["transcribing", "analyzing"].includes(stage)) return 1;
   if (stage === "live_pick") return 2;
