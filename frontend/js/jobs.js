@@ -86,7 +86,7 @@ function livePanel(j) {
   const processing = ["processing", "transcribing", "analyzing", "rendering"].includes(phase);
   const needed = Math.max(1, Number(o.live_short_count || j.short_count || 1));
   const currentPeak = current ? Number(current.peak) : null;
-  const canProceed = !decided && (picks.length || currentPeak !== null);
+  const canProceed = !decided && picks.length > 0;
   const samples = current && Array.isArray(current.sample) ? current.sample.slice(0, 2) : [];
   const chips = picks.map((p) => `<span class="live-chip">${icon("check")}${clockLabel(p.peak)}<button class="live-chip-x" data-act="live-remove" data-id="${j.id}" data-peak="${Number(p.peak)}" title="Remove spike" aria-label="Remove spike ${clockLabel(p.peak)}">${icon("x")}</button></span>`).join("");
   const status = fetching
@@ -130,7 +130,7 @@ function livePanel(j) {
     ${spikeBox}
     ${chips ? `<div class="live-picks"><span class="live-picks-label">picked</span>${chips}</div>` : ""}
     <div class="live-actions">
-      ${canProceed ? `<button class="btn primary sm" data-act="live-proceed" data-id="${j.id}"${currentPeak !== null ? ` data-peak="${currentPeak}"` : ""}>${icon("scissors")}Proceed with ${Math.max(1, picks.length + (currentPeak !== null && !picks.some((p) => Math.abs(Number(p.peak) - currentPeak) < 0.6) ? 1 : 0))} spike${(picks.length + (currentPeak !== null && !picks.some((p) => Math.abs(Number(p.peak) - currentPeak) < 0.6) ? 1 : 0)) === 1 ? "" : "s"}</button>` : ""}
+      ${canProceed ? `<button class="btn primary sm" data-act="live-proceed" data-id="${j.id}">${icon("scissors")}Proceed with ${picks.length} spike${picks.length === 1 ? "" : "s"}</button>` : ""}
       ${!decided && picks.length ? `<button class="btn ghost sm" data-act="live-clear" data-id="${j.id}">Clear</button>` : ""}
       <span class="live-target">target ${needed} clip${needed === 1 ? "" : "s"} · ±${Number(o.live_pad || 60)}s window${countdown ? ` · ${countdown}` : ""}</span>
     </div>
