@@ -534,12 +534,23 @@ def run_analyze(job_id):
                     )
                     picks, decided = _live_pick_state(job_id)
                     if not decided or not picks:
-                        auto = sorted(
+                        had_picks = bool(picks)
+                        chosen = list(picks)
+                        for item in sorted(
                             spikes,
                             key=lambda item: (item.get("count") or 0, item.get("ratio") or 0),
                             reverse=True,
-                        )[:needed]
-                        if not auto:
+                        ):
+                            if len(chosen) >= needed:
+                                break
+                            peak = float(item.get("peak") or 0)
+                            if any(
+                                abs(float(pick.get("peak") or -1) - peak) <= 1.0
+                                for pick in chosen
+                            ):
+                                continue
+                            chosen.append(item)
+                        if not chosen:
                             _discard_live_media(job_id, user_id)
                             if watched < 20:
                                 raise RuntimeError(
@@ -550,16 +561,20 @@ def run_analyze(job_id):
                                 "No chat spike was found while watching chat, so there is "
                                 "nothing to cut. Try again during a busier moment."
                             )
+                        chosen = chosen[:needed]
                         with _live_lock:
                             session = _live_session(job_id)
-                            session["picks"] = list(auto)
+                            session["picks"] = list(chosen)
                             session["decision"] = True
-                        picks = list(auto)
+                        picks = list(chosen)
                         _update_live_options(job_id, live_picks=picks, live_decision=True)
                         if pick_deadline:
                             db.log(
                                 job_id,
-                                "No spike was picked in time — auto-selected the strongest spike(s).",
+                                "Selection timed out — kept your spike pick(s) and "
+                                "auto-added the strongest remaining spike(s)."
+                                if had_picks
+                                else "No spike was picked in time — auto-selected the strongest spike(s).",
                             )
                         else:
                             db.log(job_id, "Auto-selected the strongest chat spike(s).")
