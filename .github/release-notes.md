@@ -23,8 +23,8 @@ chmod +x Shorts-Factory-1.4.0-x86_64.AppImage
 
 ## Also included
 
-- Live chat spike detection runs automatically for live links: it watches chat, records up to five minutes before and after each surge, and caps the capture at 30 minutes. A live job reports a clear error when chat is unavailable or no spike appears.
-- Live-stream recording now always uses chat spikes; manual cuts, caption studio, analytics, growth advisor and auto-upload behavior are unchanged.
+- Live chat spike detection runs automatically for live links: it watches chat only, records nothing until a spike is picked, then fetches just the selected ±60s windows from the live DVR buffer. Chat watching is capped at 30 minutes. A live job reports a clear error when chat or the DVR buffer is unavailable, or no spike appears.
+- Live-stream clipping now always uses chat spikes; manual cuts, caption studio, analytics, growth advisor and auto-upload behavior are unchanged.
 
 ## Upgrading from v1.3.x
 
